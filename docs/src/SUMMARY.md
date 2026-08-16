@@ -25,6 +25,10 @@
 - [Integration and determinism](./physics/integration.md)
 - [Accuracy and validation](./physics/accuracy.md)
 
+# Recipes
+
+- [Cookbook](./cookbook.md)
+
 # Formats
 
 - [URDF](./formats/urdf.md)
@@ -48,6 +52,7 @@
 - [How Kinetic compares](./reference/comparison.md)
 - [Keyboard shortcuts](./reference/shortcuts.md)
 - [Troubleshooting](./reference/troubleshooting.md)
+- [Glossary](./reference/glossary.md)
 
 ---
 
