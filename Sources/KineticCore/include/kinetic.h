@@ -289,6 +289,11 @@ void kn_link_joint_limits(const kn_world *w, int articulation, int link, double 
 double kn_link_mass(const kn_world *w, int articulation, int link);
 int kn_link_parent(const kn_world *w, int articulation, int link);
 void kn_actuator_info(const kn_world *w, int actuator, kn_actuator_desc *out);
+void kn_actuator_name(const kn_world *w, int actuator, char *out, int capacity);
+int kn_global_link_index(const kn_world *w, int articulation, int link);
+// Writes 6 doubles per link: angular velocity (3) then the velocity of the link
+// origin (3), both in world coordinates.
+void kn_link_velocities(const kn_world *w, double *out);
 
 double kn_kinetic_energy(const kn_world *w);
 double kn_potential_energy(const kn_world *w);

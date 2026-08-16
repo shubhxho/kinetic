@@ -548,6 +548,30 @@ void kn_actuator_info(const kn_world *w, int ai, kn_actuator_desc *out) {
     out->forceMax = a.forceMax;
 }
 
+void kn_actuator_name(const kn_world *w, int ai, char *out, int capacity) {
+    const auto &actuators = self(w)->actuators();
+    copyString(ai >= 0 && ai < int(actuators.size()) ? actuators[ai].name : std::string(), out,
+               capacity);
+}
+
+int kn_global_link_index(const kn_world *w, int art, int link) {
+    return self(w)->linkGlobalIndex(art, link);
+}
+
+void kn_link_velocities(const kn_world *w, double *out) {
+    const World *world = self(w);
+    int idx = 0;
+    for (const Articulation &art : world->articulations())
+        for (const Link &l : art.links) {
+            fromVec(l.velocity.ang, out + idx * 6);
+            // Report the velocity of the link origin, which is what a caller
+            // means by "how fast is this link moving"; the spatial vector's
+            // linear part is about the world origin and would be surprising.
+            fromVec(l.velocity.pointVelocity(l.pose.pos), out + idx * 6 + 3);
+            ++idx;
+        }
+}
+
 double kn_kinetic_energy(const kn_world *w) { return self(w)->kineticEnergy(); }
 double kn_potential_energy(const kn_world *w) { return self(w)->potentialEnergy(); }
 double kn_total_mass(const kn_world *w) { return self(w)->totalMass(); }

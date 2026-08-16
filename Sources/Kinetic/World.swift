@@ -890,6 +890,33 @@ public final class World {
         return i >= 0 ? i : nil
     }
 
+    /// Actuator names in declaration order, mirroring `sensorNames`.
+    public var actuatorNames: [String] {
+        (0..<actuatorCount).map { index in
+            var buffer = [CChar](repeating: 0, count: 128)
+            kn_actuator_name(ptr, Int32(index), &buffer, 128)
+            let name = String(cString: buffer)
+            return name.isEmpty ? "u[\(index)]" : name
+        }
+    }
+
+    /// Index into `linkPoses()` and `linkVelocities()` for a given link.
+    public func globalLinkIndex(articulation: Int, link: Int) -> Int {
+        Int(kn_global_link_index(ptr, Int32(articulation), Int32(link)))
+    }
+
+    /// Angular velocity and origin velocity of every link, in world coordinates.
+    public func linkVelocities() -> [(angular: Vec3, linear: Vec3)] {
+        let n = linkCount
+        guard n > 0 else { return [] }
+        var raw = [Double](repeating: 0, count: n * 6)
+        kn_link_velocities(ptr, &raw)
+        return (0..<n).map { i in
+            (angular: Vec3(raw[i * 6], raw[i * 6 + 1], raw[i * 6 + 2]),
+             linear: Vec3(raw[i * 6 + 3], raw[i * 6 + 4], raw[i * 6 + 5]))
+        }
+    }
+
     public func findActuator(_ name: String) -> Int? {
         let i = Int(kn_find_actuator(ptr, name))
         return i >= 0 ? i : nil

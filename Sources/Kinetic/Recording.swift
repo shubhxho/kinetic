@@ -166,6 +166,7 @@ public final class LogRecorder {
         header.sensorDataCount = world.sensorDataCount
         header.linkCount = world.linkCount
         header.sensorNames = world.sensorNames
+        header.actuatorNames = world.actuatorNames
         header.sensorDimensions = world.sensorKinds.map(\.dimension)
         for a in 0..<world.articulationCount {
             for l in 0..<world.linkCount(articulation: a) {
