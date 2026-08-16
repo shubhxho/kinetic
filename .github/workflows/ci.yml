@@ -7,12 +7,21 @@ on:
 
 jobs:
   build-and-validate:
-    runs-on: macos-15
+    # mlx-swift declares swift-tools-version 6.3, which the macos-15 image's
+    # Swift 6.1 refuses to read. macOS 26 runners carry Xcode 26.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
 
+      - name: Select the newest Xcode
+        run: |
+          ls /Applications | grep -i '^Xcode' || true
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
       - name: Show toolchain
-        run: swift --version
+        run: |
+          swift --version
+          xcodebuild -version
 
       - name: Build
         run: swift build -c release
