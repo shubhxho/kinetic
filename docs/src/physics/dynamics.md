@@ -35,6 +35,66 @@ and a prismatic joint along \\(a\\) has \\(S = [0;\\, a]\\). A free joint
 contributes three translational columns \\([0;\\, e_i]\\) and three rotational
 columns \\([e_i;\\, p \\times e_i]\\).
 
+<div class="kn-figure">
+<svg viewBox="0 0 700 250" role="img" aria-label="World-frame spatial vector convention" class="kn-svg">
+  <style>
+    .kn-svg .ax { stroke: currentColor; stroke-width: 1.2; opacity: 0.45; }
+    .kn-svg .lk { fill: none; stroke: currentColor; stroke-width: 1.6; opacity: 0.7; }
+    .kn-svg .dot { fill: currentColor; }
+    .kn-svg .acc { stroke: #0070f3; stroke-width: 1.8; fill: none; }
+    .kn-svg .accdot { fill: #0070f3; }
+    .kn-svg .lbl { fill: currentColor; font: 600 12px ui-sans-serif, system-ui, sans-serif; }
+    .kn-svg .mono { fill: currentColor; font: 400 11px ui-monospace, monospace; opacity: 0.62; }
+    .kn-svg .acclbl { fill: #0070f3; font: 600 12px ui-monospace, monospace; }
+    .kn-svg .ghost { stroke: currentColor; stroke-width: 1; opacity: 0.25;
+                     stroke-dasharray: 4 4; fill: none; }
+  </style>
+
+  <line class="ax" x1="70" y1="200" x2="330" y2="200"/>
+  <line class="ax" x1="70" y1="200" x2="70" y2="50"/>
+  <circle class="dot" cx="70" cy="200" r="3.5"/>
+  <text class="lbl" x="52" y="220">O</text>
+  <text class="mono" x="46" y="234">world origin</text>
+
+  <line class="lk" x1="210" y1="150" x2="300" y2="90"/>
+  <circle class="dot" cx="210" cy="150" r="4.5"/>
+  <text class="lbl" x="196" y="140">p</text>
+  <text class="mono" x="150" y="172">joint anchor</text>
+  <circle class="accdot" cx="300" cy="90" r="4"/>
+  <text class="mono" x="308" y="88">link</text>
+
+  <path class="ghost" d="M70 200 L210 150"/>
+  <text class="mono" x="112" y="188">p (position of the anchor)</text>
+
+  <path class="acc" d="M210 150 m-26,-16 a30 30 0 1 1 6 30" marker-end="url(#kn-arrow)"/>
+  <text class="acclbl" x="150" y="118">ω = a q̇</text>
+
+  <defs>
+    <marker id="kn-arrow" viewBox="0 0 10 10" refX="8" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0070f3"/>
+    </marker>
+  </defs>
+
+  <line x1="380" y1="40" x2="380" y2="215" class="ax"/>
+
+  <text class="lbl" x="410" y="60">Motion vector, world frame</text>
+  <text class="mono" x="410" y="82">v = [ ω ; v_O ]</text>
+  <text class="mono" x="410" y="100">v_O = v_P − ω × p_P</text>
+
+  <text class="lbl" x="410" y="132">Revolute joint at p, axis a</text>
+  <text class="mono" x="410" y="154">S = [ a ; p × a ]</text>
+
+  <text class="lbl" x="410" y="186">Point velocity, no transform</text>
+  <text class="mono" x="410" y="208">v_P = v_O + ω × p_P</text>
+</svg>
+  <p class="kn-caption">The linear part of a motion vector is the velocity of the
+  body-fixed point instantaneously at the world origin. Because every quantity
+  already lives in the world frame, assembling a contact Jacobian is one cross
+  product per degree of freedom — no frame conversions anywhere in the loop.</p>
+</div>
+
+
 ## Spatial inertia
 
 A body of mass \\(m\\) whose centre of mass is at world point \\(c\\), with

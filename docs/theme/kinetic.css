@@ -204,3 +204,125 @@ hr {
   border-top: 1px solid var(--table-border-color);
   margin: 2.4em 0;
 }
+
+/* Book-specific components ----------------------------------------------- */
+
+.kn-hero {
+  margin: 1.6em 0 2.2em;
+}
+
+.kn-hero img,
+.kn-figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--table-border-color);
+  border-radius: var(--kn-radius);
+}
+
+.kn-figure {
+  margin: 1.8em 0;
+}
+
+.kn-caption {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  opacity: 0.62;
+  margin-top: 0.6em;
+  text-align: left;
+}
+
+.kn-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  color: var(--fg);
+  border: 1px solid var(--table-border-color);
+  border-radius: var(--kn-radius);
+  padding: 0.6em;
+  background: var(--quote-bg);
+  overflow-x: auto;
+}
+
+/* Navigation cards on the landing page */
+
+.kn-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 10px;
+  margin: 1.6em 0 2.2em;
+}
+
+.kn-card {
+  display: block;
+  padding: 14px 15px;
+  border: 1px solid var(--table-border-color);
+  border-radius: var(--kn-radius);
+  text-decoration: none !important;
+  color: inherit !important;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.kn-card:hover {
+  border-color: var(--kn-accent);
+  transform: translateY(-1px);
+}
+
+.kn-card h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--kn-accent);
+}
+
+.kn-card p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  opacity: 0.68;
+}
+
+/* A row of measured figures */
+
+.kn-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 1.4em 0;
+}
+
+.kn-stat {
+  border: 1px solid var(--table-border-color);
+  border-radius: var(--kn-radius);
+  padding: 10px 12px;
+}
+
+.kn-stat .value {
+  display: block;
+  font: 600 1.15rem ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--kn-accent);
+}
+
+.kn-stat .label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+  margin-top: 2px;
+}
+
+/* Side-by-side comparison of two states */
+
+.kn-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 1.6em 0;
+}
+
+@media (max-width: 700px) {
+  .kn-compare { grid-template-columns: 1fr; }
+}

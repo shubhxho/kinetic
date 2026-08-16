@@ -24,6 +24,50 @@ Because the swept bound contains the body's whole path, a pair that *will* colli
 during the step is always found — which is what makes the speculative contacts in
 the solver able to stop it.
 
+<div class="kn-figure">
+<svg viewBox="0 0 700 200" role="img" aria-label="Directional versus isotropic AABB sweeping" class="kn-svg">
+  <style>
+    .kn-svg .obj { fill: none; stroke: currentColor; stroke-width: 1.5; opacity: 0.8; }
+    .kn-svg .tight { fill: none; stroke: currentColor; stroke-width: 1; opacity: 0.4;
+                     stroke-dasharray: 3 3; }
+    .kn-svg .wrongbox { fill: #f5a623; fill-opacity: 0.10; stroke: #f5a623;
+                        stroke-width: 1.3; stroke-dasharray: 4 3; }
+    .kn-svg .rightbox { fill: #0cce6b; fill-opacity: 0.10; stroke: #0cce6b;
+                        stroke-width: 1.3; stroke-dasharray: 4 3; }
+    .kn-svg .mv { stroke: #0070f3; stroke-width: 1.8; }
+    .kn-svg .h3 { fill: currentColor; font: 600 12px ui-sans-serif, system-ui, sans-serif; }
+    .kn-svg .m3 { fill: currentColor; font: 400 10.5px ui-monospace, monospace; opacity: 0.6; }
+    .kn-svg .warn { fill: #f5a623; font: 600 10.5px ui-monospace, monospace; }
+    .kn-svg .ok { fill: #0cce6b; font: 600 10.5px ui-monospace, monospace; }
+  </style>
+
+  <defs>
+    <marker id="kn-mv" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0070f3"/>
+    </marker>
+  </defs>
+
+  <text class="h3" x="24" y="24">grown by |motion| in all six directions</text>
+  <rect class="wrongbox" x="40" y="46" width="180" height="110" rx="3"/>
+  <rect class="tight" x="110" y="86" width="40" height="30"/>
+  <circle class="obj" cx="130" cy="101" r="14"/>
+  <line class="mv" x1="130" y1="101" x2="196" y2="101" marker-end="url(#kn-mv)"/>
+  <text class="warn" x="24" y="180">8× the volume, floods the broadphase</text>
+
+  <text class="h3" x="380" y="24">extended along the motion only</text>
+  <rect class="rightbox" x="396" y="86" width="176" height="30" rx="3"/>
+  <rect class="tight" x="396" y="86" width="40" height="30"/>
+  <circle class="obj" cx="416" cy="101" r="14"/>
+  <line class="mv" x1="416" y1="101" x2="482" y2="101" marker-end="url(#kn-mv)"/>
+  <text class="ok" x="380" y="180">contains the whole path, nothing more</text>
+</svg>
+  <p class="kn-caption">The swept bound must contain the body's entire path for
+  the step, or a speculative contact never gets the chance to stop it. It does
+  not have to contain anything else.</p>
+</div>
+
+
 ## Broadphase
 
 Sweep-and-prune along the X axis: sort 2N endpoints, walk them keeping an active
@@ -88,6 +132,49 @@ inheriting their warm-start impulses.
 
 A manifold holds at most four points. When a fifth arrives, the point whose
 removal costs least — scored on depth and spread — is evicted.
+
+<div class="kn-figure">
+<svg viewBox="0 0 700 210" role="img" aria-label="Persistent contact manifold across steps" class="kn-svg">
+  <style>
+    .kn-svg .shape { fill: none; stroke: currentColor; stroke-width: 1.5; opacity: 0.75; }
+    .kn-svg .surf { stroke: currentColor; stroke-width: 1.4; opacity: 0.5; }
+    .kn-svg .pt { fill: #0070f3; }
+    .kn-svg .old { fill: none; stroke: #0070f3; stroke-width: 1.2; opacity: 0.65; }
+    .kn-svg .drop { fill: none; stroke: #ff4d4f; stroke-width: 1.2; }
+    .kn-svg .h4 { fill: currentColor; font: 600 12px ui-sans-serif, system-ui, sans-serif; }
+    .kn-svg .m4 { fill: currentColor; font: 400 10px ui-monospace, monospace; opacity: 0.6; }
+    .kn-svg .step { fill: currentColor; font: 600 10px ui-monospace, monospace; opacity: 0.4; }
+  </style>
+
+  <text class="step" x="30" y="24">step n</text>
+  <polygon class="shape" points="40,60 130,50 140,120 50,130"/>
+  <line class="surf" x1="20" y1="140" x2="160" y2="140"/>
+  <circle class="pt" cx="52" cy="131" r="4"/>
+  <text class="m4" x="20" y="176">GJK returns one point</text>
+
+  <text class="step" x="250" y="24">step n+1</text>
+  <polygon class="shape" points="256,58 346,50 356,120 266,132"/>
+  <line class="surf" x1="236" y1="140" x2="376" y2="140"/>
+  <circle class="old" cx="268" cy="133" r="4"/>
+  <circle class="pt" cx="348" cy="126" r="4"/>
+  <text class="m4" x="236" y="176">old anchor re-projected,</text>
+  <text class="m4" x="236" y="190">new point added</text>
+
+  <text class="step" x="470" y="24">step n+2</text>
+  <polygon class="shape" points="476,62 566,56 570,124 480,132"/>
+  <line class="surf" x1="456" y1="140" x2="596" y2="140"/>
+  <circle class="old" cx="482" cy="133" r="4"/>
+  <circle class="old" cx="524" cy="131" r="4"/>
+  <circle class="pt" cx="568" cy="128" r="4"/>
+  <text class="m4" x="456" y="176">manifold reaches four points;</text>
+  <text class="m4" x="456" y="190">impulses warm-start each step</text>
+</svg>
+  <p class="kn-caption">A single point cannot stop a box rocking. Points carry
+  anchors in both geoms' local frames, are re-projected through the current
+  poses, and are dropped once they separate past the margin or drift more than
+  10 mm tangentially.</p>
+</div>
+
 
 ## Warm starting
 

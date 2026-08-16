@@ -70,6 +70,87 @@ individually and reported through `world.profile`.
 Reading `world.profile` after a step tells you which stage a slow scene is
 spending its time in, which is almost always either `collision` or `solve`.
 
+<div class="kn-figure">
+<svg viewBox="0 0 760 210" role="img" aria-label="The ten stages of a Kinetic step" class="kn-svg">
+  <style>
+    .kn-svg .stage { fill: none; stroke: currentColor; stroke-width: 1.1; opacity: 0.5; }
+    .kn-svg .hot { stroke: #0070f3; stroke-width: 1.7; opacity: 1; }
+    .kn-svg .hotfill { fill: #0070f3; opacity: 0.08; }
+    .kn-svg .n { fill: currentColor; font: 600 10px ui-monospace, monospace; opacity: 0.45; }
+    .kn-svg .t { fill: currentColor; font: 600 11.5px ui-sans-serif, system-ui, sans-serif; }
+    .kn-svg .d { fill: currentColor; font: 400 9.5px ui-monospace, monospace; opacity: 0.55; }
+    .kn-svg .flow { stroke: currentColor; stroke-width: 1; opacity: 0.3; fill: none; }
+    .kn-svg .group { fill: none; stroke: currentColor; stroke-width: 1; opacity: 0.22;
+                     stroke-dasharray: 3 3; }
+    .kn-svg .gl { fill: currentColor; font: 600 9px ui-sans-serif, system-ui, sans-serif;
+                  opacity: 0.4; letter-spacing: 0.08em; }
+  </style>
+
+  <rect class="group" x="12" y="30" width="352" height="86" rx="6"/>
+  <text class="gl" x="22" y="45">SMOOTH DYNAMICS</text>
+  <rect class="group" x="376" y="30" width="372" height="86" rx="6"/>
+  <text class="gl" x="386" y="45">CONSTRAINTS</text>
+
+  <g>
+    <rect class="stage" x="22" y="54" width="106" height="46" rx="6"/>
+    <text class="n" x="32" y="70">1 · 2</text>
+    <text class="t" x="32" y="84">kinematics</text>
+    <text class="d" x="32" y="96">poses, CRBA → M</text>
+  </g>
+  <g>
+    <rect class="stage" x="140" y="54" width="106" height="46" rx="6"/>
+    <text class="n" x="150" y="70">3 · 4</text>
+    <text class="t" x="150" y="84">bias, forces</text>
+    <text class="d" x="150" y="96">RNEA → c, τ</text>
+  </g>
+  <g>
+    <rect class="stage" x="258" y="54" width="96" height="46" rx="6"/>
+    <text class="n" x="268" y="70">5 · 6</text>
+    <text class="t" x="268" y="84">a_free</text>
+    <text class="d" x="268" y="96">LDLᵀ solve</text>
+  </g>
+
+  <g>
+    <rect class="hotfill" x="386" y="54" width="106" height="46" rx="6"/>
+    <rect class="stage hot" x="386" y="54" width="106" height="46" rx="6"/>
+    <text class="n" x="396" y="70">7</text>
+    <text class="t" x="396" y="84">collide</text>
+    <text class="d" x="396" y="96">threaded · ~21%</text>
+  </g>
+  <g>
+    <rect class="stage" x="504" y="54" width="106" height="46" rx="6"/>
+    <text class="n" x="514" y="70">8</text>
+    <text class="t" x="514" y="84">build blocks</text>
+    <text class="d" x="514" y="96">J, B, A · ~9%</text>
+  </g>
+  <g>
+    <rect class="hotfill" x="622" y="54" width="106" height="46" rx="6"/>
+    <rect class="stage hot" x="622" y="54" width="106" height="46" rx="6"/>
+    <text class="n" x="632" y="70">9</text>
+    <text class="t" x="632" y="84">solve</text>
+    <text class="d" x="632" y="96">PGS · ~62%</text>
+  </g>
+
+  <g>
+    <rect class="stage" x="258" y="140" width="244" height="44" rx="6"/>
+    <text class="n" x="268" y="156">10</text>
+    <text class="t" x="268" y="170">integrate on the manifold, then sensors</text>
+  </g>
+
+  <path class="flow" d="M128 77 H140"/>
+  <path class="flow" d="M246 77 H258"/>
+  <path class="flow" d="M354 77 H386"/>
+  <path class="flow" d="M492 77 H504"/>
+  <path class="flow" d="M610 77 H622"/>
+  <path class="flow" d="M675 100 V126 H380 V140"/>
+  <path class="flow" d="M75 100 V126 H258"/>
+</svg>
+  <p class="kn-caption">Percentages are from <code>world.profile</code> for the 282-contact
+  dominoes scene. Contact-rich scenes are solver-bound; articulated scenes with
+  few contacts are bound by CRBA and the mass-matrix factorisation.</p>
+</div>
+
+
 ## Threading
 
 Only one stage is parallel: the narrowphase, where each candidate pair is
