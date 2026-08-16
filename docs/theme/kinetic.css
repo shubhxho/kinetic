@@ -1,0 +1,206 @@
+/* kinetic.css — a restrained, high-contrast skin for the Kinetic book.
+   One accent, a four-step neutral ramp, monospaced numerals in tables. */
+
+:root {
+  --kn-accent: #0070f3;
+  --kn-success: #0cce6b;
+  --kn-warning: #f5a623;
+  --kn-danger: #ff4d4f;
+  --kn-radius: 8px;
+}
+
+.navy,
+.coal,
+.ayu {
+  --bg: #000000;
+  --fg: #ededed;
+  --sidebar-bg: #0a0a0a;
+  --sidebar-fg: #a1a1a1;
+  --sidebar-non-existant: #444;
+  --sidebar-active: var(--kn-accent);
+  --sidebar-spacer: #1a1a1a;
+  --scrollbar: #333;
+  --icons: #737373;
+  --icons-hover: #ededed;
+  --links: var(--kn-accent);
+  --inline-code-color: #ededed;
+  --theme-popup-bg: #111111;
+  --theme-popup-border: #262626;
+  --theme-hover: #1a1a1a;
+  --quote-bg: #0a0a0a;
+  --quote-border: #262626;
+  --table-border-color: #262626;
+  --table-header-bg: #111111;
+  --table-alternate-bg: #0a0a0a;
+  --searchbar-border-color: #262626;
+  --searchbar-bg: #0a0a0a;
+  --searchbar-fg: #ededed;
+  --searchbar-shadow-color: transparent;
+  --searchresults-header-fg: #737373;
+  --searchresults-border-color: #262626;
+  --searchresults-li-bg: #0a0a0a;
+  --search-mark-bg: rgba(0, 112, 243, 0.35);
+}
+
+.light,
+.rust {
+  --bg: #ffffff;
+  --fg: #171717;
+  --sidebar-bg: #fafafa;
+  --sidebar-fg: #666666;
+  --sidebar-active: var(--kn-accent);
+  --sidebar-spacer: #eaeaea;
+  --links: var(--kn-accent);
+  --table-border-color: #eaeaea;
+  --table-header-bg: #fafafa;
+  --table-alternate-bg: #fcfcfc;
+  --quote-bg: #fafafa;
+  --quote-border: #eaeaea;
+}
+
+/* Typography ------------------------------------------------------------- */
+
+.content {
+  font-feature-settings: "kern" 1, "liga" 1, "cv05" 1;
+  line-height: 1.65;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4 {
+  font-weight: 650;
+  letter-spacing: -0.018em;
+}
+
+.content h1 {
+  font-size: 2.1rem;
+  margin-top: 0.4em;
+}
+
+.content h2 {
+  font-size: 1.45rem;
+  margin-top: 2.2em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--table-border-color);
+}
+
+.content h3 {
+  font-size: 1.12rem;
+  margin-top: 1.8em;
+}
+
+.content p,
+.content li {
+  font-size: 1rem;
+}
+
+.sidebar .chapter li.chapter-item {
+  font-size: 0.86rem;
+  line-height: 1.9;
+}
+
+.sidebar .chapter li.part-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #666;
+  margin-top: 1.6em;
+}
+
+/* Code ------------------------------------------------------------------- */
+
+code {
+  font-size: 0.86em;
+  border-radius: 4px;
+}
+
+:not(pre) > code {
+  padding: 0.12em 0.36em;
+  background: rgba(127, 127, 127, 0.14);
+}
+
+pre {
+  border: 1px solid var(--table-border-color);
+  border-radius: var(--kn-radius);
+  padding: 0.35em 0.1em;
+}
+
+pre > code {
+  font-size: 0.84em;
+  line-height: 1.55;
+}
+
+/* Tables ----------------------------------------------------------------- */
+
+.content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.content table thead th {
+  font-weight: 600;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
+
+.content table td:not(:first-child),
+.content table th:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
+
+.content table td,
+.content table th {
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--table-border-color);
+}
+
+/* Callouts --------------------------------------------------------------- */
+
+blockquote {
+  border-left: 2px solid var(--kn-accent);
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 0 var(--kn-radius) var(--kn-radius) 0;
+  padding: 0.85em 1.1em;
+  margin: 1.4em 0;
+}
+
+blockquote p:first-child {
+  margin-top: 0;
+}
+
+blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* Math ------------------------------------------------------------------- */
+
+mjx-container[jax="CHTML"][display="true"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.4em 0;
+}
+
+/* Chrome ----------------------------------------------------------------- */
+
+#menu-bar {
+  border-bottom: 1px solid var(--table-border-color);
+}
+
+.menu-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--table-border-color);
+  margin: 2.4em 0;
+}

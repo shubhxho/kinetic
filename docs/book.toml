@@ -1,0 +1,27 @@
+[book]
+title = "Kinetic"
+description = "Native macOS robotics simulation — physics, rendering and telemetry."
+authors = ["Kinetic contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/shubhxho/kinetic"
+edit-url-template = "https://github.com/shubhxho/kinetic/edit/main/docs/{path}"
+additional-css = ["theme/kinetic.css"]
+no-section-label = false
+mathjax-support = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 24
+use-boolean-and = true
+
+[output.html.playground]
+runnable = false

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-validate:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Test
+        run: swift test
+
+      - name: Physics validation
+        run: ./.build/release/kinetic validate
+
+      - name: Benchmark
+        run: ./.build/release/kinetic bench --seconds 1
+
+      - name: Bundle the app
+        run: ./Scripts/bundle-app.sh release
