@@ -112,6 +112,35 @@ struct ConvexHullTests {
         #expect(hull.vertices.count <= 64)
         #expect(!hull.vertices.isEmpty)
     }
+
+    @Test("Capping is deterministic and keeps the shape")
+    func vertexCapIsStable() {
+        // A sphere is the adversarial case: ranked by distance from the centroid
+        // every vertex ties, so an unstable sort silently returns a different
+        // subset — and therefore a different volume — on different machines.
+        var points: [Vec3] = []
+        let radius = 0.4
+        for i in 0...30 {
+            for j in 0..<30 {
+                let phi = Double(i) / 30 * .pi
+                let theta = Double(j) / 30 * 2 * .pi
+                points.append(Vec3(sin(phi) * cos(theta), sin(phi) * sin(theta), cos(phi)) * radius)
+            }
+        }
+
+        let first = ConvexHull.compute(points: points, maxVertices: 128)
+        let second = ConvexHull.compute(points: points, maxVertices: 128)
+        #expect(first.vertices == second.vertices)
+        #expect(first.indices == second.indices)
+        #expect(first.volume == second.volume)
+
+        // Farthest-point sampling spreads the survivors over the surface, so the
+        // capped hull stays close to the uncapped one. Ranking by distance from
+        // the centroid clusters them and loses several percent of the volume.
+        let uncapped = ConvexHull.compute(points: points, maxVertices: 4096)
+        #expect(first.vertices.count <= 128)
+        #expect(first.volume > uncapped.volume * 0.9)
+    }
 }
 
 @Suite("Mesh import")

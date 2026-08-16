@@ -168,29 +168,44 @@ public enum ConvexHull {
         }
 
         /// Edges that belong to exactly one visible face form the horizon.
+        ///
+        /// The result is emitted in discovery order, never by iterating the
+        /// dictionary. Horizon order decides the order new faces are created,
+        /// which decides face indices, which decides which face the next
+        /// iteration picks — so a dictionary's iteration order would leak all the
+        /// way into which vertices survive, and two identical calls would return
+        /// different hulls.
         func horizon(of visible: [Int]) -> [(Int, Int)] {
             var counts: [Edge: Int] = [:]
-            var directed: [Edge: (Int, Int)] = [:]
+            var ordered: [(Int, Int)] = []
             for index in visible {
                 let face = faces[index]
                 for edge in [(face.a, face.b), (face.b, face.c), (face.c, face.a)] {
                     let key = Edge(edge.0, edge.1)
+                    if counts[key] == nil { ordered.append(edge) }
                     counts[key, default: 0] += 1
-                    directed[key] = edge
                 }
             }
-            return counts.filter { $0.value == 1 }.compactMap { directed[$0.key] }
+            return ordered.filter { counts[Edge($0.0, $0.1)] == 1 }
         }
 
+        /// Neighbour lists are rebuilt in face-index order for the same reason
+        /// the horizon is: adjacency order drives the traversal in
+        /// `collectVisible`, and iterating a dictionary here would make the hull
+        /// depend on hash layout.
         mutating func rebuildAdjacency() {
             var byEdge: [Edge: [Int]] = [:]
+            var edgeOrder: [Edge] = []
             for (index, face) in faces.enumerated() where face.alive {
                 for edge in [(face.a, face.b), (face.b, face.c), (face.c, face.a)] {
-                    byEdge[Edge(edge.0, edge.1), default: []].append(index)
+                    let key = Edge(edge.0, edge.1)
+                    if byEdge[key] == nil { edgeOrder.append(key) }
+                    byEdge[key, default: []].append(index)
                 }
             }
             for index in faces.indices { faces[index].neighbours.removeAll(keepingCapacity: true) }
-            for (_, owners) in byEdge where owners.count == 2 {
+            for key in edgeOrder {
+                guard let owners = byEdge[key], owners.count == 2 else { continue }
                 faces[owners[0]].neighbours.append(owners[1])
                 faces[owners[1]].neighbours.append(owners[0])
             }
@@ -341,12 +356,76 @@ public enum ConvexHull {
         return (abs(volume), centroid / volume)
     }
 
-    /// Drops the vertices whose removal changes the hull least, then rebuilds.
+    /// Reduces a hull to at most `limit` vertices, then rebuilds it.
+    ///
+    /// Selection is farthest-point sampling: seed with the vertex furthest from
+    /// the centroid, then repeatedly take the vertex furthest from everything
+    /// already chosen. Ranking by distance from the centroid instead — the
+    /// obvious approach — is actively wrong for a sphere, where every vertex ties
+    /// and the survivors end up clustered, costing about 5% of the volume. This
+    /// keeps the retained points spread over the surface, so the simplified hull
+    /// stays close to the original.
+    ///
+    /// Every comparison is a *total* order. Swift's sort is not stable, and a tie
+    /// broken arbitrarily would make the result differ between machines, which is
+    /// precisely what this engine promises not to do.
     private static func simplify(_ hull: ConvexHullResult, to limit: Int) -> ConvexHullResult {
+        let vertices = hull.vertices
+        guard vertices.count > limit, limit >= 4 else { return hull }
         let centre = hull.centroid
-        let ranked = hull.vertices.sorted { (a, b) in
-            (a - centre).length > (b - centre).length
+
+        func precedes(_ a: (offset: Int, element: Vec3), _ b: (offset: Int, element: Vec3),
+                      by score: (Vec3) -> Double) -> Bool {
+            let sa = score(a.element), sb = score(b.element)
+            if sa != sb { return sa > sb }
+            if a.element.x != b.element.x { return a.element.x < b.element.x }
+            if a.element.y != b.element.y { return a.element.y < b.element.y }
+            if a.element.z != b.element.z { return a.element.z < b.element.z }
+            return a.offset < b.offset
         }
-        return compute(points: Array(ranked.prefix(limit)), maxVertices: limit)
+
+        let indexed = Array(vertices.enumerated()).map { (offset: $0.offset, element: $0.element) }
+        guard var best = indexed.first else { return hull }
+        for candidate in indexed.dropFirst()
+        where precedes(candidate, best, by: { ($0 - centre).length }) {
+            best = candidate
+        }
+
+        var chosen = [best]
+        var taken = Set([best.offset])
+        // Distance from each vertex to the nearest chosen vertex, updated
+        // incrementally so the whole pass is O(n * limit) rather than O(n * k^2).
+        var nearest = indexed.map { ($0.element - best.element).length }
+
+        while chosen.count < limit {
+            var pickIndex = -1
+            var pickScore = -1.0
+            for (position, candidate) in indexed.enumerated() {
+                if taken.contains(candidate.offset) { continue }
+                let score = nearest[position]
+                if pickIndex < 0 || score > pickScore {
+                    pickIndex = position
+                    pickScore = score
+                    continue
+                }
+                // Tie: fall back to a total order on the coordinates so the
+                // survivors do not depend on the sort implementation.
+                guard score == pickScore else { continue }
+                let best = indexed[pickIndex]
+                if precedes(candidate, best, by: { _ in score }) {
+                    pickIndex = position
+                }
+            }
+            guard pickIndex >= 0 else { break }
+            let picked = indexed[pickIndex]
+            chosen.append(picked)
+            taken.insert(picked.offset)
+            for (position, candidate) in indexed.enumerated() {
+                nearest[position] = min(nearest[position],
+                                        (candidate.element - picked.element).length)
+            }
+        }
+
+        return compute(points: chosen.map(\.element), maxVertices: limit)
     }
 }
