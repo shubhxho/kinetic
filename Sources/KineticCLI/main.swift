@@ -578,6 +578,146 @@ func commandServe(_ arguments: Arguments) throws {
     RunLoop.main.run()
 }
 
+
+// MARK: - Models
+
+func commandModels(_ arguments: Arguments) throws {
+    let library = ModelLibrary()
+    let sub = arguments.positional.first ?? "list"
+    let rest = Array(arguments.positional.dropFirst())
+
+    switch sub {
+    case "list":
+        let query = rest.first
+        let entries = query.map { ModelRegistry.search($0) } ?? ModelRegistry.all
+        print(Term.bold("Robot models") + Term.dim("  \(entries.count) of \(ModelRegistry.all.count)"))
+        print()
+        print(Term.dim(pad("id", 26) + pad("vendor", 20) + pad("fmt", 6)
+                       + padLeft("dof", 4) + padLeft("act", 5) + "  " + pad("licence", 14) + "cached"))
+        for entry in entries {
+            let cached = library.isCached(entry.id)
+            var line = pad(entry.id, 26)
+            line += pad(entry.vendor, 20)
+            line += pad(entry.format.displayName.lowercased(), 6)
+            line += padLeft("\(entry.dof)", 4)
+            line += padLeft("\(entry.actuators)", 5)
+            line += "  " + pad(entry.licenseIdentifier, 14)
+            line += cached ? Term.green("yes") : Term.dim("no")
+            print(line)
+        }
+        print()
+        print(Term.dim("  kinetic models info <id>      full description and caveats"))
+        print(Term.dim("  kinetic models fetch <id>     download into the local cache"))
+
+    case "info":
+        guard let id = rest.first, let entry = ModelRegistry.entry(id: id) else {
+            throw CLIError.message("usage: kinetic models info <id>  (see `kinetic models list`)")
+        }
+        print(Term.bold(entry.displayName) + Term.dim("  \(entry.id)"))
+        print()
+        print("  vendor        \(entry.vendor)")
+        print("  summary       \(entry.summary)")
+        print("  format        \(entry.format.displayName)")
+        print("  dof           \(entry.dof)\(entry.floatingBase ? " (plus a floating base)" : "")")
+        print("  actuators     \(entry.actuators)")
+        print("  licence       \(entry.licenseIdentifier)")
+        print("  source        \(entry.descriptionURL.absoluteString)")
+        print("  licence text  \(entry.licenseURL.absoluteString)")
+        print("  cached        \(library.isCached(entry.id) ? "yes" : "no")")
+        if !entry.tags.isEmpty { print("  tags          \(entry.tags.joined(separator: ", "))") }
+        if !entry.notes.isEmpty {
+            print()
+            print(Term.yellow("  notes"))
+            for line in entry.notes.split(separator: "\n") {
+                print("    \(line)")
+            }
+        }
+
+    case "fetch":
+        guard let id = rest.first, ModelRegistry.entry(id: id) != nil else {
+            throw CLIError.message("usage: kinetic models fetch <id>  (see `kinetic models list`)")
+        }
+        print(Term.bold("Fetching ") + id + Term.dim("  from the upstream repository"))
+        let semaphore = DispatchSemaphore(value: 0)
+        var failure: Error?
+        var destination: URL?
+        Task {
+            do {
+                destination = try await library.fetch(id) { fraction in
+                    let width = 32
+                    let filled = Int(fraction * Double(width))
+                    let bar = String(repeating: "#", count: filled)
+                        + String(repeating: ".", count: width - filled)
+                    FileHandle.standardOutput.write(
+                        Data(("\r  [\(bar)] \(Int(fraction * 100))%").utf8))
+                }
+            } catch {
+                failure = error
+            }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        print()
+        if let failure { throw CLIError.message("\(failure)") }
+        if let destination {
+            print(Term.green("cached ") + destination.path)
+            print(Term.dim("  kinetic models validate \(id)"))
+        }
+
+    case "validate":
+        guard let id = rest.first else {
+            throw CLIError.message("usage: kinetic models validate <id>")
+        }
+        let report = try library.validate(id)
+        print(Term.bold(report.displayName) + Term.dim("  \(report.vendor) · \(report.license)"))
+        print()
+        print("  links             \(report.linkCount)")
+        print("  degrees of freedom \(report.dofCount)"
+              + Term.dim("  (registry declares \(report.declaredDOF) excluding the base)"))
+        print("  actuators         \(report.actuatorCount)")
+        print("  geoms             \(report.geomCount)")
+        print("  total mass        \(formatNumber(report.totalMass, 3)) kg")
+        print("  base              \(report.hasFloatingBase ? "floating" : "fixed")")
+        print()
+        if report.isClean {
+            print(Term.green("  imported cleanly"))
+        } else {
+            print(Term.yellow("  \(report.warnings.count) warning(s)"))
+            for warning in report.warnings { print("    · \(warning)") }
+        }
+        if !report.unresolvedMeshes.isEmpty {
+            print()
+            print(Term.dim("  unresolved meshes (first 5):"))
+            for mesh in report.unresolvedMeshes.prefix(5) { print(Term.dim("    \(mesh)")) }
+        }
+
+    case "cache":
+        let ids = library.cachedIdentifiers
+        let bytes = Double(library.cachedSize) / 1_048_576
+        print(Term.bold("Model cache") + Term.dim("  \(library.cacheURL.path)"))
+        print()
+        print("  models  \(ids.count)")
+        print("  size    \(formatNumber(bytes, 1)) MB")
+        for id in ids {
+            let size = Double(library.cachedSize(of: id)) / 1_048_576
+            print("    \(pad(id, 26))\(formatNumber(size, 1)) MB")
+        }
+
+    case "purge":
+        if let id = rest.first {
+            try library.purge(id)
+            print(Term.green("purged ") + id)
+        } else {
+            try library.purgeAll()
+            print(Term.green("purged the entire model cache"))
+        }
+
+    default:
+        throw CLIError.message("unknown subcommand '\(sub)' — "
+                               + "try list, info, fetch, validate, cache or purge")
+    }
+}
+
 func commandHelp() {
     print("""
     \(Term.bold("kinetic")) \(Term.dim(World.versionString))
@@ -595,6 +735,7 @@ func commandHelp() {
       \(Term.cyan("render"))   <scene|file>      render a frame to PNG, headless
       \(Term.cyan("replay"))   <file.kinlog>     inspect or export a recording
       \(Term.cyan("serve"))    <scene|file>      stream live telemetry over WebSocket
+      \(Term.cyan("models"))   [subcommand]      browse, fetch and validate published robot models
 
     \(Term.bold("OPTIONS"))
       --duration <s>      simulated seconds for `run` (default 5)
@@ -615,6 +756,8 @@ func commandHelp() {
       kinetic serve arm --port 8765
       kinetic render stack --steps 400 --out stack.png
       kinetic info ~/models/panda.urdf
+      kinetic models list
+      kinetic models fetch unitree-go2 && kinetic models validate unitree-go2
     """)
 }
 
@@ -632,6 +775,7 @@ do {
     case "render", "screenshot": try commandRender(arguments)
     case "replay", "log": try commandReplay(arguments)
     case "serve": try commandServe(arguments)
+    case "models", "model": try commandModels(arguments)
     case "version", "--version": print(World.versionString)
     default: commandHelp()
     }

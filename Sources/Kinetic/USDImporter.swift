@@ -893,9 +893,9 @@ public enum USDImporter {
         var defaultPose: [Double] = []
 
         options.onWarning?(
-            "no mass was authored for any prim in this stage, so every mass below is derived as "
-            + "convex hull volume × \(options.density) kg/m³ and every inertia tensor is the "
-            + "hull's own, computed about that mass. These are Kinetic's numbers, not the "
+            "importing geometry only: no UsdPhysics values are being read, so every mass below is "
+            + "derived as convex hull volume × \(options.density) kg/m³ and every inertia tensor "
+            + "is that hull's own, computed about that mass. These are Kinetic's numbers, not the "
             + "asset's.")
 
         switch options.bodyPolicy {
@@ -960,17 +960,22 @@ public enum USDImporter {
 
     /// The prims that become free bodies. A stage root that owns no geometry of
     /// its own is a container (`/World` is near-universal in Omniverse assets),
-    /// so its children are used instead. The choice is always reported.
+    /// so its children are used instead. Prims whose whole subtree is empty of
+    /// geometry — joint prims, scopes, lights — are not bodies at all. The
+    /// choice is always reported.
     private static func topLevelBodies(in geometry: [USDNode],
                                        options: USDImportOptions) -> [USDNode] {
         var result: [USDNode] = []
         for root in geometry {
             if root.meshes.isEmpty && !root.children.isEmpty {
+                let candidates = root.children.filter { child in
+                    child.flattened.contains { !$0.meshes.isEmpty }
+                }
                 options.onWarning?(
-                    "'\(root.path)' owns no geometry, so its \(root.children.count) child prim(s) "
-                    + "became the free bodies instead of the root itself")
-                result.append(contentsOf: root.children)
-            } else {
+                    "'\(root.path)' owns no geometry, so its \(candidates.count) mesh-bearing "
+                    + "child prim(s) became the free bodies instead of the root itself")
+                result.append(contentsOf: candidates)
+            } else if !root.flattened.allSatisfy(\.meshes.isEmpty) {
                 result.append(root)
             }
         }
