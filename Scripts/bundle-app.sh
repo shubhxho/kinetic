@@ -70,8 +70,11 @@ done
 # no metallib and MLX reports the accelerator unavailable — the analytic
 # controller, the phrase parser and the statistical detector all still work, only
 # the neural paths are disabled. Stage a metallib from DerivedData if one exists.
-MLX_BUNDLE="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
-  -name "mlx-swift_Cmlx.bundle" -maxdepth 6 2>/dev/null | head -1)"
+# `|| true` matters: with `set -o pipefail`, find exiting non-zero because
+# DerivedData does not exist — which is the normal case on a CI runner — would
+# take the whole script down.
+MLX_BUNDLE="$( { find "$HOME/Library/Developer/Xcode/DerivedData" \
+  -name "mlx-swift_Cmlx.bundle" -maxdepth 6 2>/dev/null || true; } | head -1)"
 if [[ -n "$MLX_BUNDLE" ]]; then
   cp -R "$MLX_BUNDLE" "$APP/Contents/Resources/"
   echo "  staged MLX Metal kernels"
