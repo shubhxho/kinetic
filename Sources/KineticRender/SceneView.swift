@@ -16,6 +16,8 @@ import SwiftUI
 import simd
 
 public struct ViewportStats: Sendable {
+    public init() {}
+
     public var simulationTime: Double = 0
     public var realtimeFactor: Double = 1
     public var stepMilliseconds: Double = 0

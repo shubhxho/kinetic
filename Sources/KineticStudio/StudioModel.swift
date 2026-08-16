@@ -1,0 +1,363 @@
+//
+//  StudioModel.swift
+//  Kinetic Studio
+//
+//  Application state: the world under inspection, render settings, live plot
+//  channels, recording, and the telemetry bridge. The simulation itself is
+//  stepped by the viewport's display link, so everything here observes state
+//  that is already on the main thread.
+//
+
+import Combine
+import Foundation
+import Kinetic
+import KineticBridge
+import KineticRender
+import SwiftUI
+
+// MARK: - Plot channels
+
+/// A fixed-capacity ring buffer of (time, value) samples.
+struct PlotSeries: Identifiable {
+    let id = UUID()
+    var channel: LiveChannel
+    var color: Color
+    private(set) var times: [Double] = []
+    private(set) var values: [Double] = []
+    private let capacity: Int
+    private var head = 0
+
+    init(channel: LiveChannel, color: Color, capacity: Int = 3000) {
+        self.channel = channel
+        self.color = color
+        self.capacity = capacity
+        times.reserveCapacity(capacity)
+        values.reserveCapacity(capacity)
+    }
+
+    mutating func append(time: Double, value: Double) {
+        if times.count < capacity {
+            times.append(time)
+            values.append(value)
+        } else {
+            times[head] = time
+            values[head] = value
+            head = (head + 1) % capacity
+        }
+    }
+
+    mutating func clear() {
+        times.removeAll(keepingCapacity: true)
+        values.removeAll(keepingCapacity: true)
+        head = 0
+    }
+
+    /// Samples in chronological order, oldest first.
+    var ordered: [(t: Double, v: Double)] {
+        guard times.count == capacity else {
+            return zip(times, values).map { ($0, $1) }
+        }
+        var out: [(Double, Double)] = []
+        out.reserveCapacity(capacity)
+        for i in 0..<capacity {
+            let index = (head + i) % capacity
+            out.append((times[index], values[index]))
+        }
+        return out
+    }
+
+    var latest: Double { values.isEmpty ? 0 : values[(head - 1 + values.count) % values.count] }
+}
+
+/// Something in the running world that can be plotted.
+struct LiveChannel: Hashable, Identifiable {
+    enum Source: Hashable {
+        case position(Int)
+        case velocity(Int)
+        case control(Int)
+        case actuatorForce(Int)
+        case sensor(Int)
+        case stepTime
+        case contactCount
+        case solverResidual
+        case totalEnergy
+        case comHeight
+    }
+
+    var source: Source
+    var label: String
+    var id: Source { source }
+
+    func value(in world: World) -> Double {
+        switch source {
+        case .position(let i): return i < world.coordinateCount ? world.positions[i] : 0
+        case .velocity(let i): return i < world.dofCount ? world.velocities[i] : 0
+        case .control(let i): return i < world.actuatorCount ? world.control[i] : 0
+        case .actuatorForce(let i): return i < world.actuatorCount ? world.actuatorForces[i] : 0
+        case .sensor(let i): return i < world.sensorDataCount ? world.sensorReadings[i] : 0
+        case .stepTime: return world.profile.total
+        case .contactCount: return Double(world.profile.contactCount)
+        case .solverResidual: return world.profile.solverResidual
+        case .totalEnergy: return world.totalEnergy
+        case .comHeight: return world.centerOfMass.z
+        }
+    }
+}
+
+struct ConsoleLine: Identifiable {
+    enum Level {
+        case info, success, warning, error
+    }
+    let id = UUID()
+    let time: Date
+    let level: Level
+    let text: String
+}
+
+// MARK: - Model
+
+@MainActor
+final class StudioModel: ObservableObject {
+    @Published var world: World
+    @Published var settings = RenderSettings()
+    @Published var isPlaying = false
+    @Published var timeScale: Double = 1.0
+    @Published var stats = ViewportStats()
+    @Published var selectedGeom: Int?
+    @Published var sceneTitle = "6-DOF arm"
+    @Published var sceneIdentifier = "arm"
+    @Published var console: [ConsoleLine] = []
+    @Published var series: [PlotSeries] = []
+    @Published var availableChannels: [LiveChannel] = []
+    @Published var isDark = true
+    @Published var bridgePort: UInt16 = 8765
+    @Published var bridgeConnections = 0
+    @Published var isRecording = false
+    @Published var recordedFrames = 0
+    @Published var showInspector = true
+    @Published var showSidebar = true
+    @Published var showBottomPanel = true
+    @Published var plotWindowSeconds: Double = 8
+
+    let renderer: Renderer?
+    let commands = ViewportCommands()
+
+    private var bridge: FoxgloveBridge?
+    private var recorder: LogRecorder?
+    private var bridgeTimer: Timer?
+
+    init() {
+        renderer = Renderer(sampleCount: 4)
+        world = SceneLibrary.articulatedArm()
+        settings.theme = .dark
+        log("Kinetic Studio ready — \(World.versionString)", .success)
+        if renderer == nil {
+            log("no Metal device available; the viewport is disabled", .error)
+        }
+        rebuildChannels()
+        applyDefaultPlots()
+    }
+
+    var bridgeIsRunning: Bool { bridge?.isRunning ?? false }
+
+    // MARK: Scene management
+
+    func load(sceneIdentifier id: String) {
+        guard let entry = SceneLibrary.all.first(where: { $0.id == id }) else { return }
+        let built = entry.build()
+        adopt(built, title: entry.title, identifier: id)
+        log("loaded scene \(entry.title)", .info)
+    }
+
+    func load(url: URL) {
+        do {
+            let loaded: World
+            switch url.pathExtension.lowercased() {
+            case "urdf":
+                loaded = try URDF.load(contentsOf: url).world
+            case "xml", "mjcf":
+                loaded = try MJCF.load(contentsOf: url).world
+            default:
+                let data = try Data(contentsOf: url)
+                let head = String(data: data.prefix(4096), encoding: .utf8) ?? ""
+                if head.contains("<mujoco") {
+                    loaded = try MJCF.load(data: data).world
+                } else if head.contains("<robot") {
+                    loaded = try URDF.load(data: data).world
+                } else {
+                    log("unrecognised model format: \(url.lastPathComponent)", .error)
+                    return
+                }
+            }
+            adopt(loaded, title: url.deletingPathExtension().lastPathComponent,
+                  identifier: url.path)
+            log("imported \(url.lastPathComponent) — \(loaded.linkCount) links, "
+                + "\(loaded.dofCount) dof", .success)
+        } catch {
+            log("import failed: \(error)", .error)
+        }
+    }
+
+    private func adopt(_ newWorld: World, title: String, identifier: String) {
+        stopRecording()
+        world = newWorld
+        sceneTitle = title
+        sceneIdentifier = identifier
+        selectedGeom = nil
+        settings.selection = []
+        rebuildChannels()
+        applyDefaultPlots()
+        if let bridge, bridge.isRunning {
+            stopBridge()
+            startBridge()
+        }
+        commands.frameScene()
+    }
+
+    func reset() {
+        world.reset()
+        for index in series.indices { series[index].clear() }
+        log("state reset", .info)
+    }
+
+    func stepOnce() {
+        commands.singleStep()
+    }
+
+    // MARK: Channels
+
+    func rebuildChannels() {
+        var channels: [LiveChannel] = []
+        channels.append(LiveChannel(source: .stepTime, label: "step time (ms)"))
+        channels.append(LiveChannel(source: .contactCount, label: "contacts"))
+        channels.append(LiveChannel(source: .totalEnergy, label: "total energy (J)"))
+        channels.append(LiveChannel(source: .comHeight, label: "com height (m)"))
+        channels.append(LiveChannel(source: .solverResidual, label: "solver residual"))
+
+        var sensorIndex = 0
+        for (i, name) in world.sensorNames.enumerated() {
+            let dimension = i < world.sensorKinds.count ? world.sensorKinds[i].dimension : 1
+            for k in 0..<dimension {
+                let suffix = dimension == 1 ? "" : ".\(["x", "y", "z", "w"][min(k, 3)])"
+                channels.append(LiveChannel(source: .sensor(sensorIndex),
+                                            label: "\(name)\(suffix)"))
+                sensorIndex += 1
+            }
+        }
+        for i in 0..<world.actuatorCount {
+            channels.append(LiveChannel(source: .control(i), label: "ctrl[\(i)]"))
+            channels.append(LiveChannel(source: .actuatorForce(i), label: "force[\(i)]"))
+        }
+        for i in 0..<min(world.dofCount, 64) {
+            channels.append(LiveChannel(source: .velocity(i), label: "qvel[\(i)]"))
+        }
+        for i in 0..<min(world.coordinateCount, 64) {
+            channels.append(LiveChannel(source: .position(i), label: "qpos[\(i)]"))
+        }
+        availableChannels = channels
+    }
+
+    private func applyDefaultPlots() {
+        series.removeAll()
+        let defaults: [LiveChannel] = [
+            LiveChannel(source: .stepTime, label: "step time (ms)"),
+            LiveChannel(source: .contactCount, label: "contacts"),
+            LiveChannel(source: .comHeight, label: "com height (m)"),
+        ]
+        for (i, channel) in defaults.enumerated() {
+            series.append(PlotSeries(channel: channel,
+                                     color: Palette.series[i % Palette.series.count]))
+        }
+    }
+
+    func addPlot(_ channel: LiveChannel) {
+        guard !series.contains(where: { $0.channel == channel }) else { return }
+        series.append(PlotSeries(channel: channel,
+                                 color: Palette.series[series.count % Palette.series.count]))
+    }
+
+    func removePlot(_ id: UUID) {
+        series.removeAll { $0.id == id }
+    }
+
+    /// Called once per simulated step from the viewport.
+    func sample() {
+        let time = world.time
+        for index in series.indices {
+            series[index].append(time: time, value: series[index].channel.value(in: world))
+        }
+        recorder?.record(world)
+        if recorder != nil { recordedFrames += 1 }
+        bridge?.publishIfNeeded()
+    }
+
+    // MARK: Recording
+
+    func startRecording(to url: URL) {
+        do {
+            recorder = try LogRecorder(url: url, world: world, title: sceneTitle)
+            recordedFrames = 0
+            isRecording = true
+            log("recording to \(url.lastPathComponent)", .success)
+        } catch {
+            log("recording failed: \(error)", .error)
+        }
+    }
+
+    func stopRecording() {
+        guard let recorder else { return }
+        recorder.finish()
+        log("recorded \(recorder.frameCount) frames", .success)
+        self.recorder = nil
+        isRecording = false
+    }
+
+    // MARK: Bridge
+
+    func startBridge() {
+        let bridge = FoxgloveBridge(world: world)
+        bridge.onLog = { [weak self] message in
+            Task { @MainActor in self?.log("bridge: \(message)", .info) }
+        }
+        do {
+            try bridge.start(port: bridgePort)
+            self.bridge = bridge
+            log("telemetry live at ws://localhost:\(bridgePort)", .success)
+            bridgeTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.bridgeConnections = self?.bridge?.connectionCount ?? 0
+                }
+            }
+            objectWillChange.send()
+        } catch {
+            log("could not start telemetry server: \(error)", .error)
+        }
+    }
+
+    func stopBridge() {
+        bridge?.stop()
+        bridge = nil
+        bridgeTimer?.invalidate()
+        bridgeTimer = nil
+        bridgeConnections = 0
+        log("telemetry stopped", .info)
+        objectWillChange.send()
+    }
+
+    func toggleBridge() {
+        bridgeIsRunning ? stopBridge() : startBridge()
+    }
+
+    // MARK: Console
+
+    func log(_ text: String, _ level: ConsoleLine.Level = .info) {
+        console.append(ConsoleLine(time: Date(), level: level, text: text))
+        if console.count > 500 { console.removeFirst(console.count - 500) }
+    }
+
+    // MARK: Appearance
+
+    func applyAppearance() {
+        settings.theme = isDark ? .dark : .light
+    }
+}

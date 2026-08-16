@@ -367,10 +367,22 @@ void World::pointJacobian(int art, int link, const Vec3 &worldPoint, Scalar *out
     }
 }
 
+// Includes the armature (rotor inertia) term, so this always equals
+// 0.5 * v^T M v for the same M the solver factorises.
 Scalar World::kineticEnergy() const {
     Scalar e = 0;
-    for (const Articulation &art : articulations_)
-        for (const Link &l : art.links) e += Scalar(0.5) * l.velocity.dot(l.spatialInertia * l.velocity);
+    for (size_t ai = 0; ai < articulations_.size(); ++ai) {
+        const Articulation &art = articulations_[ai];
+        for (const Link &l : art.links) {
+            e += Scalar(0.5) * l.velocity.dot(l.spatialInertia * l.velocity);
+            const Joint &j = l.joint;
+            if (j.armature == 0) continue;
+            for (int k = 0; k < j.nv; ++k) {
+                Scalar qd = qvel[art.vOffset + j.vIndex + k];
+                e += Scalar(0.5) * j.armature * qd * qd;
+            }
+        }
+    }
     return e;
 }
 
