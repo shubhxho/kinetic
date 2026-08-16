@@ -24,7 +24,10 @@ enum class GeomType : int {
 
 struct Material {
     Scalar friction = 1.0;         // Coulomb friction coefficient
-    Scalar torsionalFriction = 0.005;
+    // Spin friction about the contact normal, in metres. Off by default: it
+    // costs a fourth solver row per contact and only matters for geometry that
+    // pivots in place (feet, wheels, balls).
+    Scalar torsionalFriction = 0.0;
     Scalar rollingFriction = 0.0;
     Scalar restitution = 0.0;      // 0 = fully inelastic
     Scalar stiffnessTimeConst = 0.02;  // contact soft-constraint time constant [s]

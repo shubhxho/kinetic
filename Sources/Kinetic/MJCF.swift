@@ -15,6 +15,8 @@
 import Foundation
 
 public struct MJCFImportOptions: Sendable {
+    public var meshLibrary: MeshLibrary? = nil
+    public var onWarning: (@Sendable (String) -> Void)? = nil
     public var defaultDensity: Double = 1000
     public var addActuators: Bool = true
     public var selfCollision: Bool = true
@@ -143,6 +145,31 @@ public enum MJCF {
             throw MJCFError.malformed("missing <worldbody>")
         }
 
+        // <asset><mesh name file scale/></asset>
+        let meshes = options.meshLibrary ?? MeshLibrary()
+        if let compiler = root.elements(forName: "compiler").first,
+           let dir = attr(compiler, "meshdir") {
+            meshes.addSearchPath(URL(fileURLWithPath: dir))
+        }
+        var meshShapes: [String: Shape] = [:]
+        if let assets = root.elements(forName: "asset").first {
+            for element in assets.elements(forName: "mesh") {
+                guard let name = attr(element, "name") ?? attr(element, "file") else { continue }
+                let file = attr(element, "file") ?? name
+                let scaleValues = numbers(attr(element, "scale"))
+                let scale = scaleValues.count >= 3
+                    ? Vec3(scaleValues[0], scaleValues[1], scaleValues[2])
+                    : Vec3(1, 1, 1)
+                guard let mesh = try? meshes.load(file, scale: scale) else {
+                    options.onWarning?("could not resolve mesh '\(file)'")
+                    continue
+                }
+                let index = world.addMesh(vertices: mesh.hullVertices, indices: mesh.hullIndices,
+                                          name: mesh.name)
+                meshShapes[name] = .convexHull(mesh: index, boundingRadius: mesh.boundingRadius)
+            }
+        }
+
         let articulation = world.addArticulation(name: modelName)
         var linkNames: [String] = []
         var jointLinkByName: [String: Int] = [:]
@@ -155,7 +182,8 @@ public enum MJCF {
         linkNames.append("world")
         for geom in worldbody.elements(forName: "geom") {
             addGeom(geom, to: world, articulation: articulation, link: rootLink,
-                    anchorOffset: .zero, defaults: resolve(geom, defaults, classDefaults))
+                    anchorOffset: .zero, defaults: resolve(geom, defaults, classDefaults),
+                    meshShapes: meshShapes)
         }
 
         func addBody(_ element: XMLElement, parentLink: Int, parentAnchor: Vec3) throws {
@@ -252,13 +280,14 @@ public enum MJCF {
             var geomShapes: [(Shape, Pose, Double)] = []
             for geomElement in element.elements(forName: "geom") {
                 let d = resolve(geomElement, defaults, classDefaults)
-                if let (shape, pose, mass) = geomDescription(geomElement, defaults: d) {
+                if let (shape, pose, mass) = geomDescription(geomElement, defaults: d,
+                                                            meshShapes: meshShapes) {
                     geomShapes.append((shape, pose, mass))
                     totalMass += mass
                     comAccum += pose.position * mass
                 }
                 addGeom(geomElement, to: world, articulation: articulation, link: currentLink,
-                        anchorOffset: anchorOffset, defaults: d)
+                        anchorOffset: anchorOffset, defaults: d, meshShapes: meshShapes)
             }
 
             if let inertial = element.elements(forName: "inertial").first {
@@ -382,8 +411,9 @@ public enum MJCF {
         return base
     }
 
-    private static func geomDescription(_ element: XMLElement,
-                                        defaults: Defaults) -> (Shape, Pose, Double)? {
+    private static func geomDescription(_ element: XMLElement, defaults: Defaults,
+                                        meshShapes: [String: Shape] = [:])
+        -> (Shape, Pose, Double)? {
         let type = attr(element, "type") ?? defaults.geomType
         var size = numbers(attr(element, "size"))
         if size.isEmpty { size = defaults.geomSize }
@@ -419,6 +449,11 @@ public enum MJCF {
             shape = .cylinder(radius: r, halfLength: halfLength ?? (size.count > 1 ? size[1] : r))
         case "plane":
             shape = .plane(extent: size.first ?? 40)
+        case "mesh":
+            guard let name = attr(element, "mesh"), let resolved = meshShapes[name] else {
+                return nil
+            }
+            shape = resolved
         case "ellipsoid":
             shape = .sphere(radius: size.first ?? 0.05)
         default:
@@ -432,8 +467,10 @@ public enum MJCF {
     }
 
     private static func addGeom(_ element: XMLElement, to world: World, articulation: Int,
-                                link: Int, anchorOffset: Vec3, defaults: Defaults) {
-        guard let (shape, pose, _) = geomDescription(element, defaults: defaults) else { return }
+                                link: Int, anchorOffset: Vec3, defaults: Defaults,
+                                meshShapes: [String: Shape] = [:]) {
+        guard let (shape, pose, _) = geomDescription(element, defaults: defaults,
+                                                     meshShapes: meshShapes) else { return }
         var appearance = Appearance(color: defaults.geomRGBA)
         let rgba = numbers(attr(element, "rgba"))
         if rgba.count >= 4 { appearance.color = Vec4(rgba[0], rgba[1], rgba[2], rgba[3]) }

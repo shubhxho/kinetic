@@ -76,7 +76,10 @@ public enum Shape: Equatable, Sendable {
 
 public struct SurfaceMaterial: Equatable, Sendable {
     public var friction: Double = 1.0
-    public var torsionalFriction: Double = 0.005
+    /// Spin friction about the contact normal, in metres. Zero by default: it
+    /// adds a fourth solver row per contact and only pays off for geometry that
+    /// pivots in place, such as feet, wheels and balls.
+    public var torsionalFriction: Double = 0.0
     public var restitution: Double = 0.0
     /// Contact softness: the time constant of the constraint's error decay.
     public var stiffnessTimeConstant: Double = 0.02
@@ -85,7 +88,7 @@ public struct SurfaceMaterial: Equatable, Sendable {
 
     public init(friction: Double = 1.0, restitution: Double = 0.0,
                 stiffnessTimeConstant: Double = 0.02, dampingRatio: Double = 1.0,
-                torsionalFriction: Double = 0.005, margin: Double = 0) {
+                torsionalFriction: Double = 0.0, margin: Double = 0) {
         self.friction = friction
         self.restitution = restitution
         self.stiffnessTimeConstant = stiffnessTimeConstant
@@ -96,7 +99,8 @@ public struct SurfaceMaterial: Equatable, Sendable {
 
     public static let `default` = SurfaceMaterial()
     public static let ice = SurfaceMaterial(friction: 0.05)
-    public static let rubber = SurfaceMaterial(friction: 1.4, restitution: 0.6)
+    public static let rubber = SurfaceMaterial(friction: 1.4, restitution: 0.6,
+                                               torsionalFriction: 0.01)
     public static let steel = SurfaceMaterial(friction: 0.4, restitution: 0.2)
 }
 

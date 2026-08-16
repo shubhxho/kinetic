@@ -26,6 +26,10 @@ public struct URDFImportOptions: Sendable {
     public var actuatorGainP: Double = 400
     public var actuatorGainD: Double = 20
     public var loadVisualMeshes: Bool = true
+    /// Shared mesh cache; supply one to reuse decoded meshes across imports.
+    public var meshLibrary: MeshLibrary? = nil
+    /// Report meshes that could not be resolved instead of failing the import.
+    public var onWarning: (@Sendable (String) -> Void)? = nil
 
     public init() {}
 }
@@ -61,7 +65,8 @@ public enum URDF {
         var origin: Pose
         var color: Vec4?
         var isCollision: Bool
-        var meshName: String?
+        var meshURI: String?
+        var meshScale: Vec3 = Vec3(1, 1, 1)
     }
 
     private struct ParsedLink {
@@ -140,9 +145,25 @@ public enum URDF {
 
     // MARK: Build
 
+    /// Registers a mesh with the world and returns the geom shape that uses it.
+    /// Collision geoms get the convex hull (a linear support scan, so vertex
+    /// count matters); visual geoms keep the authored triangles.
+    private static func resolveMesh(_ uri: String, scale: Vec3, world: World, collidable: Bool,
+                                    library: MeshLibrary,
+                                    options: URDFImportOptions) -> Shape? {
+        guard let mesh = try? library.load(uri, scale: scale) else { return nil }
+        let vertices = collidable ? mesh.hullVertices : mesh.vertices
+        let indices = collidable ? mesh.hullIndices : mesh.indices
+        guard !vertices.isEmpty else { return nil }
+        let index = world.addMesh(vertices: vertices, indices: indices, name: mesh.name)
+        return .convexHull(mesh: index, boundingRadius: mesh.boundingRadius)
+    }
+
     private static func build(root: XMLElement, world: World,
                               options: URDFImportOptions) throws -> Robot {
         let robotName = attr(root, "name") ?? "robot"
+        let meshes = options.meshLibrary ?? MeshLibrary(searchPaths: options.packageRoots)
+        for root in options.packageRoots { meshes.addSearchPath(root) }
 
         // Named <material> blocks declared at robot scope.
         var palette: [String: Vec4] = [:]
@@ -179,7 +200,8 @@ public enum URDF {
                 link.inertial = parsed
             }
 
-            for (tag, isCollision) in [("visual", false), ("collision", true)] {
+            _ = 0
+        for (tag, isCollision) in [("visual", false), ("collision", true)] {
                 for node in element.elements(forName: tag) {
                     guard let geometry = child(node, "geometry") else { continue }
                     let origin = parseOrigin(child(node, "origin"))
@@ -321,9 +343,21 @@ public enum URDF {
                 }
                 let collidable = geom.isCollision || !hasCollision
                 let visible = !geom.isCollision || !parsed.geoms.contains(where: { !$0.isCollision })
-                var spec = GeomSpec(shape: geom.shape, localPose: geom.origin,
+                var shape = geom.shape
+                if let uri = geom.meshURI {
+                    if let resolved = resolveMesh(uri, scale: geom.meshScale, world: world,
+                                                  collidable: collidable, library: meshes,
+                                                  options: options) {
+                        shape = resolved
+                    } else {
+                        options.onWarning?("could not resolve mesh '\(uri)' for link '\(name)'")
+                    }
+                }
+                var spec = GeomSpec(shape: shape, localPose: geom.origin,
                                     collidable: collidable, visible: visible,
-                                    name: geom.meshName ?? name)
+                                    name: geom.meshURI.map {
+                                        URL(fileURLWithPath: $0).lastPathComponent
+                                    } ?? name)
                 if let color = geom.color {
                     spec.appearance = Appearance(color: color, roughness: 0.5)
                 }
@@ -358,29 +392,29 @@ public enum URDF {
             let s = doubles(attr(box, "size"))
             guard s.count >= 3 else { return nil }
             return ParsedGeom(shape: .box(halfExtents: Vec3(s[0], s[1], s[2]) * 0.5),
-                              origin: origin, color: color, isCollision: isCollision,
-                              meshName: nil)
+                              origin: origin, color: color, isCollision: isCollision)
         }
         if let sphere = child(geometry, "sphere") {
             guard let r = Double(attr(sphere, "radius") ?? "") else { return nil }
             return ParsedGeom(shape: .sphere(radius: r), origin: origin, color: color,
-                              isCollision: isCollision, meshName: nil)
+                              isCollision: isCollision)
         }
         if let cylinder = child(geometry, "cylinder") {
             guard let r = Double(attr(cylinder, "radius") ?? ""),
                   let l = Double(attr(cylinder, "length") ?? "") else { return nil }
             return ParsedGeom(shape: .cylinder(radius: r, halfLength: l * 0.5), origin: origin,
-                              color: color, isCollision: isCollision, meshName: nil)
+                              color: color, isCollision: isCollision)
         }
         if let mesh = child(geometry, "mesh") {
             let filename = attr(mesh, "filename") ?? ""
             let scale = doubles(attr(mesh, "scale"))
             let s = scale.count >= 3 ? Vec3(scale[0], scale[1], scale[2]) : Vec3(1, 1, 1)
-            // The mesh itself is resolved later by MeshLibrary; until then it is
-            // represented by its bounding box so the model is still simulable.
-            return ParsedGeom(shape: .box(halfExtents: Vec3(0.05, 0.05, 0.05) * s.x),
+            // The actual geometry is resolved during build(), where the world is
+            // available to register the mesh. Until then it carries a placeholder
+            // shape so a failed resolve still yields a simulable model.
+            return ParsedGeom(shape: .box(halfExtents: Vec3(0.02, 0.02, 0.02)),
                               origin: origin, color: color, isCollision: isCollision,
-                              meshName: filename)
+                              meshURI: filename, meshScale: s)
         }
         return nil
     }

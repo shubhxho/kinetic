@@ -3,6 +3,8 @@
 
 #include "kn_world.hpp"
 
+#include "kn_threads.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -273,9 +275,11 @@ void World::collide() {
     manifolds_.clear();
     if (!options.enableContacts) return;
 
+    const Scalar h = options.timestep;
     for (size_t gi = 0; gi < geoms_.size(); ++gi) {
         const Geom &g = geoms_[gi];
-        geomPose_[gi] = articulations_[g.articulation].links[g.link].pose * g.localPose;
+        const Link &link = articulations_[g.articulation].links[g.link];
+        geomPose_[gi] = link.pose * g.localPose;
         if (!g.collidable) {
             aabbs_[gi].min = Vec3(1, 1, 1);
             aabbs_[gi].max = Vec3(0, 0, 0);  // marks the geom as skipped
@@ -283,15 +287,40 @@ void World::collide() {
         }
         aabbs_[gi] = geomAABB(g, geomPose_[gi], meshes_);
         aabbs_[gi].grow(options.contactMargin + g.material.margin);
+        // Extend the bound along this step's motion — directionally, not
+        // isotropically — so a fast body still finds the surface it is about to
+        // hit without inflating the broadphase for everything around it. The
+        // speculative contact built from that pair then stops the body exactly
+        // at the surface instead of letting it tunnel through.
+        Vec3 motion = link.velocity.pointVelocity(geomPose_[gi].pos) * h;
+        if (motion.normSquared() > 1e-12) {
+            for (int axis = 0; axis < 3; ++axis) {
+                Scalar d = clampf(motion[axis], -2.0, 2.0);
+                if (d < 0) aabbs_[gi].min[axis] += d; else aabbs_[gi].max[axis] += d;
+            }
+        }
     }
 
     broadphase_.update(aabbs_);
     profile_.broadphasePairs = int(broadphase_.pairs().size());
 
-    std::unordered_map<uint64_t, Manifold> next;
-    next.reserve(broadphase_.pairs().size());
+    // Approach speed decides how far ahead a pair must look: only geoms that
+    // are actually closing fast pay for a wide search band, so a settled scene
+    // keeps the tight default margin.
+    auto speculativeMargin = [&](int a, int b) {
+        const Geom &ga = geoms_[a];
+        const Geom &gb = geoms_[b];
+        Scalar base = options.contactMargin + std::max(ga.material.margin, gb.material.margin);
+        const Link &la = articulations_[ga.articulation].links[ga.link];
+        const Link &lb = articulations_[gb.articulation].links[gb.link];
+        Vec3 relative = la.velocity.pointVelocity(geomPose_[a].pos)
+                      - lb.velocity.pointVelocity(geomPose_[b].pos);
+        Scalar sweep = std::min(relative.norm() * h, Scalar(2.0));
+        return base + sweep;
+    };
 
-    ContactPoint newPoints[8];
+    // ── filter (serial, cheap) ────────────────────────────────────────
+    candidatePairs_.clear();
     for (const auto &pr : broadphase_.pairs()) {
         const Geom &ga = geoms_[pr.first];
         const Geom &gb = geoms_[pr.second];
@@ -310,15 +339,42 @@ void World::collide() {
             continue;
         if (!articulations_[ga.articulation].enabled || !articulations_[gb.articulation].enabled)
             continue;
+        candidatePairs_.push_back(pr);
+    }
 
-        Scalar margin = options.contactMargin + std::max(ga.material.margin, gb.material.margin);
-        bool persistent = false;
-        int count = collidePair(ga, geomPose_[pr.first], gb, geomPose_[pr.second], meshes_, margin,
-                                newPoints, 4, &persistent);
+    // ── narrowphase (parallel, results indexed by candidate) ──────────
+    narrowphaseResults_.assign(candidatePairs_.size(), NarrowphaseResult{});
+    auto narrowphase = [&](int index) {
+        const auto &pr = candidatePairs_[index];
+        const Geom &ga = geoms_[pr.first];
+        const Geom &gb = geoms_[pr.second];
+        NarrowphaseResult &out = narrowphaseResults_[index];
+        out.margin = speculativeMargin(pr.first, pr.second);
+        out.count = collidePair(ga, geomPose_[pr.first], gb, geomPose_[pr.second], meshes_,
+                                out.margin, out.points, 4, &out.persistent);
+    };
+    if (options.multithreaded && candidatePairs_.size() >= 24) {
+        ThreadPool::shared().parallelFor(int(candidatePairs_.size()), 8, narrowphase);
+    } else {
+        for (int i = 0; i < int(candidatePairs_.size()); ++i) narrowphase(i);
+    }
+
+    // ── merge with the previous step's manifolds (serial, ordered) ────
+    std::unordered_map<uint64_t, Manifold> next;
+    next.reserve(candidatePairs_.size());
+
+    for (size_t index = 0; index < candidatePairs_.size(); ++index) {
+        const auto &pr = candidatePairs_[index];
+        const Geom &ga = geoms_[pr.first];
+        const Geom &gb = geoms_[pr.second];
+        const int count = narrowphaseResults_[index].count;
+        const bool persistent = narrowphaseResults_[index].persistent;
+        const ContactPoint *newPoints = narrowphaseResults_[index].points;
         if (count == 0) continue;
 
         uint64_t key = manifoldKey(pr.first, pr.second);
         auto oldIt = manifoldCache_.find(key);
+        const Scalar margin = narrowphaseResults_[index].margin;
 
         Manifold man;
         man.geomA = pr.first;

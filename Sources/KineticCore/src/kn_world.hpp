@@ -57,7 +57,8 @@ struct ConstraintBlock {
     Scalar lambda[6] = {0};
     Scalar lower[6] = {0};
     Scalar upper[6] = {0};
-    Scalar friction = 0;   // Coulomb coefficient for contact blocks
+    Scalar friction = 0;            // Coulomb coefficient for contact blocks
+    Scalar torsionalFriction = 0;   // spin-friction coefficient, metres
     int manifold = -1;     // index into World::manifolds_
     int point = -1;        // point index within the manifold
     int sourceIndex = -1;  // joint-limit dof or equality index
@@ -202,6 +203,14 @@ class World {
     bool compiled_ = false;
 
     // collision state
+    struct NarrowphaseResult {
+        int count = 0;
+        bool persistent = false;
+        Scalar margin = 0;
+        ContactPoint points[4];
+    };
+    std::vector<std::pair<int, int>> candidatePairs_;
+    std::vector<NarrowphaseResult> narrowphaseResults_;
     Broadphase broadphase_;
     std::vector<AABB> aabbs_;
     std::vector<Transform> geomPose_;

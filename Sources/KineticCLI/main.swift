@@ -263,8 +263,12 @@ func commandBench(_ arguments: Arguments) throws {
                    + padLeft("steps", 8) + padLeft("ms/step", 10) + padLeft("steps/s", 10)
                    + padLeft("realtime", 10) + padLeft("contacts", 10)))
 
+    let threaded = !arguments.has("serial")
     for target in targets {
         guard let world = SceneLibrary.build(target) ?? (try? loadWorld(target)) else { continue }
+        var simOptions = world.options
+        simOptions.multithreaded = threaded
+        world.options = simOptions
         let steps = Int(seconds / world.options.timestep)
         // Warm up so the first-touch page faults do not land in the measurement.
         world.step(min(50, steps))
@@ -286,7 +290,9 @@ func commandBench(_ arguments: Arguments) throws {
         print(line)
     }
     print()
-    print(Term.dim("  single-threaded, double precision, warm caches"))
+    print(Term.dim("  double precision, warm caches, "
+                   + (threaded ? "threaded narrowphase" : "single-threaded")
+                   + "  (--serial to compare)"))
 }
 
 func commandValidate(_ arguments: Arguments) throws {
@@ -413,6 +419,39 @@ func commandValidate(_ arguments: Arguments) throws {
             if abs(z - expected) > 0.02 { ordered = false }
         }
         check("box stack stability", "max drift \(formatNumber(maxDrift * 1000, 2)) mm", ordered)
+    }
+
+    // Speculative contacts must stop a fast projectile at a thin wall.
+    do {
+        let world = World()
+        world.addStaticBody(name: "wall", shape: .box(halfExtents: Vec3(0.005, 1, 1)),
+                            pose: Pose(position: Vec3(0, 0, 0)))
+        let ball = world.addRigidBody(name: "ball", shape: .sphere(radius: 0.02), density: 2000,
+                                      pose: Pose(position: Vec3(-1, 0, 0)))
+        world.compile()
+        var options = world.options
+        options.gravity = .zero
+        world.options = options
+        world.setVelocity(articulation: ball.articulation, linear: Vec3(120, 0, 0))
+        world.step(400)
+        let x = world.positions[0]
+        check("no tunnelling at 120 m/s", "stopped at x = \(formatNumber(x, 4)) m", x < 0.02)
+    }
+
+    // The threaded narrowphase must match the serial one bit for bit.
+    do {
+        func run(threaded: Bool) -> [Double] {
+            let world = SceneLibrary.dominoes(count: 60)
+            var options = world.options
+            options.multithreaded = threaded
+            world.options = options
+            world.step(900)
+            return Array(world.positions)
+        }
+        let serial = run(threaded: false)
+        let parallel = run(threaded: true)
+        check("threaded narrowphase determinism", "\(serial.count) coordinates compared",
+              serial == parallel)
     }
 
     // Determinism: the same inputs must produce bit-identical state.

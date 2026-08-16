@@ -335,7 +335,8 @@ public enum SceneLibrary {
             world.addGeom(articulation: art, link: shank,
                           GeomSpec(shape: .sphere(radius: 0.026),
                                    localPose: Pose(position: Vec3(0, 0, -0.175)),
-                                   material: SurfaceMaterial(friction: 1.3),
+                                   material: SurfaceMaterial(friction: 1.3,
+                                                             torsionalFriction: 0.012),
                                    appearance: Appearance(color: Vec4(0.05, 0.55, 1.0, 1),
                                                           roughness: 0.7),
                                    name: "\(name)_foot"))

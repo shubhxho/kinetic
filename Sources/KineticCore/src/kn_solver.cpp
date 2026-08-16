@@ -152,16 +152,26 @@ void World::buildConstraints() {
                 orthoBasis(cp.normal, t1, t2);
                 Vec3 dirs[3] = {cp.normal, t1, t2};
 
+                const bool torsional = man.torsionalFriction > 0;
+                const int dim = torsional ? 4 : 3;
+
                 ConstraintBlock blk;
                 blk.kind = ConstraintKind::Contact;
                 blk.manifold = mi;
                 blk.point = pi;
                 blk.friction = man.friction;
-                allocBlock(blk, man.artA, man.artB, 3);
+                blk.torsionalFriction = man.torsionalFriction;
+                allocBlock(blk, man.artA, man.artB, dim);
 
                 addPointRows(blk, 0, man.artA, man.linkA, cp.position, dirs, 3, +1);
                 int slotB = (blk.art[1] >= 0) ? 1 : 0;
                 addPointRows(blk, slotB, man.artB, man.linkB, cp.position, dirs, 3, -1);
+                if (torsional) {
+                    // Spin about the contact normal: resists a foot or a ball
+                    // pivoting in place, which point friction alone cannot.
+                    addAngularRows(blk, 0, man.artA, man.linkA, &cp.normal, 1, 3, +1);
+                    addAngularRows(blk, slotB, man.artB, man.linkB, &cp.normal, 1, 3, -1);
+                }
                 finalizeBlock(blk);
 
                 if (blk.A[0] < 1e-12) continue;  // both bodies static
@@ -169,18 +179,27 @@ void World::buildConstraints() {
                 Softness soft = computeSoftness(blk.A[0], h, man.timeConst, man.dampingRatio);
                 blk.A[0] += soft.cfm;
 
-                Scalar penetration = std::max(Scalar(0), cp.depth - options.penetrationSlop);
-                Scalar biasVel = clampf(soft.erp / h * penetration, 0, options.maxCorrectionVelocity);
+                // Speculative contacts. A point that is still separated by `gap`
+                // may approach by at most that much this step, so the body lands
+                // exactly on the surface rather than tunnelling through it or
+                // being frozen a margin's width above it.
+                Scalar biasVel;
+                if (cp.depth > options.penetrationSlop) {
+                    biasVel = clampf(soft.erp / h * (cp.depth - options.penetrationSlop), 0,
+                                     options.maxCorrectionVelocity);
+                } else if (cp.depth < 0) {
+                    biasVel = cp.depth / h;  // negative: approach up to the gap
+                } else {
+                    biasVel = 0;
+                }
 
                 // Restitution uses the pre-step approach velocity.
                 Scalar vnPre = rowDot(blk, 0, qvel);
-                Scalar restitution = 0;
                 if (man.restitution > 0 && vnPre < -0.2)
-                    restitution = -man.restitution * vnPre;
+                    biasVel = std::max(biasVel, -man.restitution * vnPre);
 
-                blk.bias[0] = std::max(biasVel, restitution);
-                blk.bias[1] = 0;
-                blk.bias[2] = 0;
+                blk.bias[0] = biasVel;
+                for (int d = 1; d < dim; ++d) blk.bias[d] = 0;
                 blk.lower[0] = 0;
                 blk.upper[0] = 1e30;
 
@@ -188,8 +207,9 @@ void World::buildConstraints() {
                     blk.lambda[0] = cp.impulseNormal;
                     blk.lambda[1] = cp.impulseT1;
                     blk.lambda[2] = cp.impulseT2;
+                    if (torsional) blk.lambda[3] = cp.impulseTorsion;
                 } else {
-                    blk.lambda[0] = blk.lambda[1] = blk.lambda[2] = 0;
+                    for (int d = 0; d < dim; ++d) blk.lambda[d] = 0;
                 }
                 blocks_.push_back(std::move(blk));
             }
@@ -413,6 +433,17 @@ void World::solveConstraints() {
                 applyImpulse(blk, 1, n1 - lt1);
                 applyImpulse(blk, 2, n2 - lt2);
                 residual = std::max(residual, std::max(std::abs(n1 - lt1), std::abs(n2 - lt2)));
+
+                if (blk.dim > 3) {
+                    Scalar spinLimit = blk.torsionalFriction * blk.lambda[0];
+                    Scalar previous = blk.lambda[3];
+                    Scalar spin = rowVelocity(blk, 3);
+                    Scalar delta = -spin / std::max(blk.A[3 * 6 + 3], Scalar(1e-12));
+                    Scalar next = clampf(previous + delta, -spinLimit, spinLimit);
+                    blk.lambda[3] = next;
+                    applyImpulse(blk, 3, next - previous);
+                    residual = std::max(residual, std::abs(next - previous));
+                }
             } else {
                 for (int d = 0; d < blk.dim; ++d) {
                     Scalar Add = std::max(blk.A[d * 6 + d], Scalar(1e-12));
@@ -441,6 +472,7 @@ void World::solveConstraints() {
         cp.impulseNormal = blk.lambda[0];
         cp.impulseT1 = blk.lambda[1];
         cp.impulseT2 = blk.lambda[2];
+        cp.impulseTorsion = blk.dim > 3 ? blk.lambda[3] : 0;
 
         Vec3 t1, t2;
         orthoBasis(cp.normal, t1, t2);
