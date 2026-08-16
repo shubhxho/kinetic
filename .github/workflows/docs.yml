@@ -34,14 +34,7 @@ jobs:
         run: mdbook build docs
 
       - name: Check for broken internal links
-        run: |
-          set -euo pipefail
-          missing=0
-          while read -r target; do
-            [ -f "docs/book/$target" ] || { echo "missing: $target"; missing=1; }
-          done < <(grep -rhoE 'href="[a-zA-Z0-9._/-]+\.html"' docs/book --include='*.html' \
-                   | sed -E 's/href="([^"]+)"/\1/' | sort -u | grep -v '^http')
-          exit $missing
+        run: python3 docs/check-links.py docs/book
 
       - uses: actions/configure-pages@v5
         with:
