@@ -81,6 +81,7 @@ private struct GizmoTip {
 struct AxisGizmoView: View {
     @Environment(\.studioTheme) private var theme
     @ObservedObject var model: StudioModel
+    @ObservedObject private var commands: ViewportCommands
 
     /// Diameter of the disc. 78pt keeps the letters legible without the gizmo
     /// competing with the model for attention.
@@ -90,15 +91,16 @@ struct AxisGizmoView: View {
 
     init(model: StudioModel, size: CGFloat = 78) {
         self.model = model
+        self.commands = model.commands
         self.size = size
     }
 
-    // The camera lives inside the Metal view and publishes nothing when it orbits.
-    // The gizmo still tracks it because `model.stats` is republished every rendered
-    // frame, which re-evaluates this body — so reading the angles here is always a
-    // fresh read, never a cached one.
-    private var azimuth: Double { Double(model.commands.camera?.azimuth ?? -0.9) }
-    private var elevation: Double { Double(model.commands.camera?.elevation ?? 0.42) }
+    // `ViewportCommands` republishes the pose only when the camera actually
+    // moves, so this body runs while you orbit and stays quiet when you stop —
+    // rather than on every rendered frame, as it did when it tracked the
+    // statistics update instead.
+    private var azimuth: Double { Double(commands.pose.azimuth) }
+    private var elevation: Double { Double(commands.pose.elevation) }
 
     private var centre: CGPoint { CGPoint(x: size / 2, y: size / 2) }
     private var radius: CGFloat { size * 0.30 }

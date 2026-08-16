@@ -115,6 +115,94 @@ struct ConsoleLine: Identifiable {
     let text: String
 }
 
+// MARK: - Live statistics
+
+/// The viewport's numbers, published on their own object.
+///
+/// These change constantly while `StudioModel`'s other state does not, and an
+/// `ObservableObject` invalidates *every* view that observes it, not only the
+/// views that read the property that changed. Publishing step time from
+/// `StudioModel` therefore re-evaluated the whole window — split tree, inspector,
+/// tables — several times a second, at a cost of most of a core. Splitting the
+/// fast-changing values onto their own object narrows that to the handful of
+/// readouts which actually display them.
+@MainActor
+final class LiveStats: ObservableObject {
+    @Published var value = ViewportStats()
+}
+
+/// Plot channels and their samples.
+///
+/// Samples arrive once per simulated step — well over a hundred times a second —
+/// and holding them in a `@Published` array on `StudioModel` meant every step
+/// invalidated every view observing the model: the split tree, the inspector
+/// form, the tables, all of it. The data itself is not published here; only a
+/// revision counter is, and only as often as a plot can usefully redraw.
+@MainActor
+final class PlotStore: ObservableObject {
+    private(set) var series: [PlotSeries] = []
+
+    /// Bumped when the samples have changed enough to be worth redrawing.
+    @Published private(set) var revision = 0
+
+    private var lastPublish: CFTimeInterval = 0
+    private var pending = false
+
+    /// The slowest refresh that still reads as a live trace. Charts rebuilds its
+    /// scales and marks from scratch on every redraw, and with several channels
+    /// on screen that is the most expensive thing the window does — so this is
+    /// the one rate worth being careful about. Roughly seven redraws a second
+    /// still looks continuous on a trace that scrolls a few pixels per frame.
+    private static let refreshInterval: CFTimeInterval = 0.14
+
+    /// Records a sample without publishing. The redraw is announced separately,
+    /// on the same tick as everything else that changes while the world runs, so
+    /// the window lays out once per tick rather than once per publisher.
+    func append(time: Double, from world: World) {
+        guard !series.isEmpty else { return }
+        for index in series.indices {
+            series[index].append(time: time, value: series[index].channel.value(in: world))
+        }
+        pending = true
+    }
+
+    /// Announces accumulated samples if enough time has passed. Called from the
+    /// model's own tick.
+    func flush(at now: CFTimeInterval) {
+        guard pending, now - lastPublish >= Self.refreshInterval else { return }
+        pending = false
+        lastPublish = now
+        revision &+= 1
+    }
+
+    func add(_ newSeries: PlotSeries) {
+        series.append(newSeries)
+        publish()
+    }
+
+    func remove(id: UUID) {
+        series.removeAll { $0.id == id }
+        publish()
+    }
+
+    func removeAll() {
+        series.removeAll()
+        publish()
+    }
+
+    func clearSamples() {
+        for index in series.indices { series[index].clear() }
+        publish()
+    }
+
+    /// Structural changes are the user's own edits, so they show immediately.
+    private func publish() {
+        lastPublish = CACurrentMediaTime()
+        pending = false
+        revision &+= 1
+    }
+}
+
 // MARK: - Model
 
 @MainActor
@@ -123,12 +211,10 @@ final class StudioModel: ObservableObject {
     @Published var settings = RenderSettings()
     @Published var isPlaying = false
     @Published var timeScale: Double = 1.0
-    @Published var stats = ViewportStats()
     @Published var selectedGeom: Int?
     @Published var sceneTitle = "6-DOF arm"
     @Published var sceneIdentifier = "arm"
     @Published var console: [ConsoleLine] = []
-    @Published var series: [PlotSeries] = []
     @Published var availableChannels: [LiveChannel] = []
     @Published var isDark = true
     @Published var bridgePort: UInt16 = 8765
@@ -149,6 +235,18 @@ final class StudioModel: ObservableObject {
     @Published var showCommandPalette = false
     @Published var sidebarWidth: Double = Double(Metric.sidebarWidth)
     @Published var inspectorWidth: Double = Double(Metric.inspectorWidth)
+
+    /// Plot channels. Not `@Published` here on purpose — see `PlotStore`.
+    let plots = PlotStore()
+    var series: [PlotSeries] { plots.series }
+
+    /// Viewport numbers. Not `@Published` here on purpose — see `LiveStats`.
+    /// Views that display these observe `live`; everything else just reads.
+    let live = LiveStats()
+    var stats: ViewportStats {
+        get { live.value }
+        set { live.value = newValue }
+    }
 
     /// Rolling window of past states; the timeline scrubs through this.
     let history = StateHistory()
@@ -181,15 +279,28 @@ final class StudioModel: ObservableObject {
     /// Publishes viewport statistics at a bounded rate.
     ///
     /// The viewport produces these every rendered frame, and assigning a
-    /// `@Published` property that often makes SwiftUI re-evaluate every panel in
-    /// the workspace — several of which snapshot the entire world state to build
-    /// their rows. A readout of step time and contact count does not need to be
-    /// fresher than 10 Hz, and the difference is most of a CPU core.
+    /// `@Published` property that often makes SwiftUI re-evaluate every view that
+    /// observes it. Even scoped to `LiveStats`, the observers include a form, a
+    /// chart and the HUD, and none of them is cheap to lay out.
+    ///
+    /// The rate therefore follows the run. While stepping, 10 Hz is the slowest
+    /// that still reads as live. While paused nothing is advancing except the
+    /// frame counter, so 2 Hz costs nothing anyone can see and takes the idle app
+    /// from a third of a core to almost nothing.
     func publish(stats newStats: ViewportStats) {
         let now = CACurrentMediaTime()
-        guard now - lastStatsPublish >= 0.1 else { return }
+        let interval = isPlaying ? 0.1 : 0.5
+        guard now - lastStatsPublish >= interval else { return }
         lastStatsPublish = now
+
+        // Everything that changes while the world runs is announced here, in one
+        // call stack. Three publishers firing at three slightly different moments
+        // meant three full window layouts per cycle for one cycle's worth of new
+        // information; announced together they collapse into one.
         stats = newStats
+        plots.flush(at: now)
+        let head = max(history.count - 1, 0)
+        if !isScrubbing, scrubIndex != head { scrubIndex = head }
     }
 
     /// The time shown in the UI: the playhead while scrubbing, otherwise live.
@@ -258,7 +369,7 @@ final class StudioModel: ObservableObject {
     func reset() {
         world.reset()
         resetGeneration += 1
-        for index in series.indices { series[index].clear() }
+        plots.clearSamples()
         history.clear()
         isScrubbing = false
         scrubIndex = 0
@@ -338,37 +449,37 @@ final class StudioModel: ObservableObject {
     }
 
     private func applyDefaultPlots() {
-        series.removeAll()
+        plots.removeAll()
         let defaults: [LiveChannel] = [
             LiveChannel(source: .stepTime, label: "step time (ms)"),
             LiveChannel(source: .contactCount, label: "contacts"),
             LiveChannel(source: .comHeight, label: "com height (m)"),
         ]
         for (i, channel) in defaults.enumerated() {
-            series.append(PlotSeries(channel: channel,
+            plots.add(PlotSeries(channel: channel,
                                      color: Palette.series[i % Palette.series.count]))
         }
     }
 
     func addPlot(_ channel: LiveChannel) {
         guard !series.contains(where: { $0.channel == channel }) else { return }
-        series.append(PlotSeries(channel: channel,
+        plots.add(PlotSeries(channel: channel,
                                  color: Palette.series[series.count % Palette.series.count]))
     }
 
     func removePlot(_ id: UUID) {
-        series.removeAll { $0.id == id }
+        plots.remove(id: id)
     }
 
     /// Called once per simulated step from the viewport.
     func sample() {
         guard !isScrubbing else { return }
         let time = world.time
-        for index in series.indices {
-            series[index].append(time: time, value: series[index].channel.value(in: world))
-        }
+        plots.append(time: time, from: world)
         history.record(world)
-        scrubIndex = max(history.count - 1, 0)
+        // The playhead moves with the tick in `publish(stats:)`, not here: this
+        // runs once per simulated step, and republishing an index a hundred times
+        // a second re-rendered the whole window for a slider that cannot show it.
         recorder?.record(world)
         if recorder != nil { recordedFrames += 1 }
         bridge?.publishIfNeeded()

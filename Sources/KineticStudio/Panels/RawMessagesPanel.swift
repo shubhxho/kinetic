@@ -202,7 +202,7 @@ struct RawMessagesPanel: View {
         let rows = buildRows()
         return VStack(spacing: 0) {
             header(rowCount: rows.count)
-            PanelDivider()
+            Divider()
             if rows.isEmpty {
                 emptyState
             } else {

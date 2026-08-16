@@ -476,17 +476,17 @@ struct PolicyPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            PanelDivider()
+            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     taskSection
-                    PanelDivider()
+                    Divider()
                     trainingSection
-                    PanelDivider()
+                    Divider()
                     curveSection
-                    PanelDivider()
+                    Divider()
                     resultsSection
-                    PanelDivider()
+                    Divider()
                     runSection
                 }
             }

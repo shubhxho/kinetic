@@ -107,6 +107,7 @@ struct ViewportGlassGroup<Content: View>: View {
 struct ViewportHUD: View {
     @Environment(\.studioTheme) private var theme
     @ObservedObject var model: StudioModel
+    @EnvironmentObject private var live: LiveStats
 
     /// Extra detail is opt-in: the six primary numbers are what you watch while
     /// tuning a model; draw cost and solver counts are what you look at when
@@ -121,7 +122,7 @@ struct ViewportHUD: View {
     /// number that carries colour. Everything else stays neutral to keep the cluster
     /// from turning into a traffic light.
     private var realtimeTone: Color {
-        model.stats.realtimeFactor >= 0.95 ? Palette.success : Palette.warning
+        live.value.realtimeFactor >= 0.95 ? Palette.success : Palette.warning
     }
 
     var body: some View {
@@ -141,13 +142,13 @@ struct ViewportHUD: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
                 HUDReadout(label: "time", value: format(model.displayTime, 3), unit: "s")
-                HUDReadout(label: "realtime", value: format(model.stats.realtimeFactor, 2),
+                HUDReadout(label: "realtime", value: format(live.value.realtimeFactor, 2),
                            unit: "×", tone: realtimeTone)
-                HUDReadout(label: "step", value: format(model.stats.stepMilliseconds, 2),
+                HUDReadout(label: "step", value: format(live.value.stepMilliseconds, 2),
                            unit: "ms")
-                HUDReadout(label: "contacts", value: "\(model.stats.contactCount)")
-                HUDReadout(label: "fps", value: format(model.stats.frameRate, 0))
-                HUDReadout(label: "instances", value: "\(model.stats.instanceCount)")
+                HUDReadout(label: "contacts", value: "\(live.value.contactCount)")
+                HUDReadout(label: "fps", value: format(live.value.frameRate, 0))
+                HUDReadout(label: "instances", value: "\(live.value.instanceCount)")
             }
 
             if isExpanded {
@@ -155,13 +156,13 @@ struct ViewportHUD: View {
                     .fill(theme.border.opacity(0.6))
                     .frame(height: 1)
                 HStack(spacing: 14) {
-                    HUDReadout(label: "draw", value: format(model.stats.drawMilliseconds, 2),
+                    HUDReadout(label: "draw", value: format(live.value.drawMilliseconds, 2),
                                unit: "ms")
-                    HUDReadout(label: "constraints", value: "\(model.stats.constraintCount)")
-                    HUDReadout(label: "steps/frame", value: "\(model.stats.stepsPerFrame)")
+                    HUDReadout(label: "constraints", value: "\(live.value.constraintCount)")
+                    HUDReadout(label: "steps/frame", value: "\(live.value.stepsPerFrame)")
                     HUDReadout(label: "energy",
-                               value: format(model.stats.kineticEnergy
-                                             + model.stats.potentialEnergy, 2),
+                               value: format(live.value.kineticEnergy
+                                             + live.value.potentialEnergy, 2),
                                unit: "J")
                 }
             }
@@ -191,8 +192,13 @@ struct ViewportHUD: View {
     }
 }
 
-/// One column of the cluster: caption above, monospaced value below. Values are
-/// monospaced so the cluster does not reflow every frame as digits change width.
+/// One column of the cluster: caption above, monospaced value below.
+///
+/// The column is a fixed width rather than a fitted one. A readout whose width
+/// tracks its digits re-measures its whole ancestry every time the number gains
+/// or loses a digit, and the ancestry here reaches the window's hosting view —
+/// which is how a step-time label ends up re-laying out the entire workspace ten
+/// times a second. A fixed column also stops the cluster twitching sideways.
 private struct HUDReadout: View {
     @Environment(\.studioTheme) private var theme
 
@@ -219,7 +225,7 @@ private struct HUDReadout: View {
                 }
             }
         }
-        .fixedSize()
+        .frame(width: 64, alignment: .leading)
     }
 }
 

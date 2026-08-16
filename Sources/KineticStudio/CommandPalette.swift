@@ -69,7 +69,7 @@ struct CommandPalette: View {
             .padding(.horizontal, 14)
             .frame(height: 46)
 
-            PanelDivider()
+            Divider()
 
             ScrollViewReader { proxy in
                 ScrollView {

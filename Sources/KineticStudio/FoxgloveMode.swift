@@ -485,9 +485,9 @@ private struct FoxglovePopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            PanelDivider()
+            Divider()
             connectionForm
-            PanelDivider()
+            Divider()
             topicList
         }
         .frame(width: 320)

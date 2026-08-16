@@ -2,9 +2,14 @@
 //  Theme.swift
 //  Kinetic Studio
 //
-//  Design tokens. The system is deliberately narrow: one accent, a four-step
-//  neutral ramp, one radius scale, one type scale. Numbers are always monospaced
-//  so columns of telemetry stay aligned as values change.
+//  Design tokens and the thin layer that dresses SwiftUI's own controls.
+//
+//  Everything here composes native views — `Button`, `Toggle`, `Slider`,
+//  `LabeledContent`, `GroupBox`, `Divider` — rather than reimplementing them.
+//  A hand-drawn checkbox looks the same until someone tabs to it, right-clicks
+//  it, turns on Increase Contrast or runs VoiceOver; the native control already
+//  does all of that, and styling it through `ButtonStyle` / `ToggleStyle` is how
+//  SwiftUI is meant to be extended.
 //
 
 import SwiftUI
@@ -88,9 +93,57 @@ enum Metric {
     static let inspectorWidth: CGFloat = 288
 }
 
-// MARK: - Shared building blocks
+// MARK: - Button styling
 
-/// Small uppercase section header used at the top of every panel.
+/// Styling for the compact controls that live in bars and panel headers.
+///
+/// A `ButtonStyle` rather than a bespoke `Button` clone: SwiftUI keeps ownership
+/// of hit testing, the pressed state, keyboard activation, focus rings and
+/// accessibility, and this only decides how the label is dressed.
+struct KineticButtonStyle: ButtonStyle {
+    @Environment(\.studioTheme) private var theme
+    @Environment(\.isEnabled) private var isEnabled
+
+    var isActive: Bool = false
+    var tone: Color? = nil
+    var showsBorder: Bool = true
+
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let fill: Color = isActive ? theme.accent
+            : (configuration.isPressed ? theme.border
+               : (hovering ? theme.border.opacity(0.55) : .clear))
+
+        configuration.label
+            .font(Typo.small.weight(.medium))
+            .foregroundStyle(isActive ? Color.white : (tone ?? theme.text))
+            .padding(.horizontal, 9)
+            .frame(height: 26)
+            .background(fill, in: RoundedRectangle(cornerRadius: Metric.radius))
+            .overlay {
+                if showsBorder && !isActive {
+                    RoundedRectangle(cornerRadius: Metric.radius)
+                        .stroke(theme.border, lineWidth: 1)
+                }
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+extension ButtonStyle where Self == KineticButtonStyle {
+    static var kinetic: KineticButtonStyle { KineticButtonStyle() }
+    static func kinetic(active: Bool, tone: Color? = nil) -> KineticButtonStyle {
+        KineticButtonStyle(isActive: active, tone: tone)
+    }
+}
+
+// MARK: - Small shared pieces
+
+/// Section heading. Used where a `Form`'s own `Section` header is not available
+/// because the content is a plain stack rather than a form.
 struct SectionLabel: View {
     @Environment(\.studioTheme) private var theme
     let text: String
@@ -98,24 +151,28 @@ struct SectionLabel: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(text.uppercased())
+            Text(text)
                 .font(Typo.sectionLabel)
+                .textCase(.uppercase)
                 .kerning(0.6)
                 .foregroundStyle(theme.tertiary)
             Spacer(minLength: 0)
             if let trailing {
                 Text(trailing)
                     .font(Typo.monoSmall)
+                    .monospacedDigit()
                     .foregroundStyle(theme.tertiary)
             }
         }
         .padding(.horizontal, Metric.gutter)
         .padding(.top, 10)
         .padding(.bottom, 6)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
-/// A key/value row: label left, monospaced value right.
+/// Label on the left, monospaced value on the right — `LabeledContent`, which
+/// also gives the pair the right VoiceOver reading without extra work.
 struct FieldRow: View {
     @Environment(\.studioTheme) private var theme
     let label: String
@@ -123,21 +180,24 @@ struct FieldRow: View {
     var accent: Color? = nil
 
     var body: some View {
-        HStack(spacing: 8) {
+        LabeledContent {
+            Text(value)
+                .font(Typo.mono)
+                .monospacedDigit()
+                .foregroundStyle(accent ?? theme.text)
+                .lineLimit(1)
+        } label: {
             Text(label)
                 .font(Typo.small)
                 .foregroundStyle(theme.secondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(Typo.mono)
-                .foregroundStyle(accent ?? theme.text)
-                .lineLimit(1)
         }
         .padding(.horizontal, Metric.gutter)
         .frame(height: Metric.rowHeight)
     }
 }
 
+/// A metric tile, built on `GroupBox` so it picks up the platform's own
+/// grouping treatment.
 struct StatTile: View {
     @Environment(\.studioTheme) private var theme
     let label: String
@@ -146,69 +206,34 @@ struct StatTile: View {
     var tone: Color? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(Typo.sectionLabel)
-                .kerning(0.5)
-                .foregroundStyle(theme.tertiary)
+        GroupBox {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
                     .font(Typo.monoLarge)
+                    .monospacedDigit()
                     .foregroundStyle(tone ?? theme.text)
                 if let unit {
                     Text(unit)
                         .font(Typo.monoSmall)
                         .foregroundStyle(theme.tertiary)
                 }
+                Spacer(minLength: 0)
             }
+        } label: {
+            Text(label)
+                .font(Typo.sectionLabel)
+                .textCase(.uppercase)
+                .kerning(0.5)
+                .foregroundStyle(theme.tertiary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(theme.surface)
-        .overlay(
-            RoundedRectangle(cornerRadius: Metric.radius)
-                .stroke(theme.borderSubtle, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: Metric.radius))
+        .groupBoxStyle(.automatic)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(value) \(unit ?? "")")
     }
 }
 
-struct ToolbarButton: View {
-    @Environment(\.studioTheme) private var theme
-    let systemImage: String
-    var label: String? = nil
-    var isActive: Bool = false
-    var tone: Color? = nil
-    let action: () -> Void
-
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 11, weight: .semibold))
-                if let label {
-                    Text(label)
-                        .font(Typo.small.weight(.medium))
-                }
-            }
-            .foregroundStyle(isActive ? Color.white : (tone ?? theme.text))
-            .padding(.horizontal, label == nil ? 8 : 10)
-            .frame(height: 26)
-            .background(
-                RoundedRectangle(cornerRadius: Metric.radius)
-                    .fill(isActive ? theme.accent
-                                   : (hovering ? theme.border.opacity(0.55) : Color.clear)))
-            .overlay(
-                RoundedRectangle(cornerRadius: Metric.radius)
-                    .stroke(isActive ? Color.clear : theme.border, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-    }
-}
-
+/// Compact status pill.
 struct Chip: View {
     @Environment(\.studioTheme) private var theme
     let text: String
@@ -217,14 +242,15 @@ struct Chip: View {
     var body: some View {
         Text(text)
             .font(Typo.monoSmall)
+            .monospacedDigit()
             .foregroundStyle(tone ?? theme.secondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background((tone ?? theme.secondary).opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .background((tone ?? theme.secondary).opacity(0.12), in: Capsule())
     }
 }
 
+/// A real `Toggle` with the checkbox style, plus an optional shortcut hint.
 struct ToggleRow: View {
     @Environment(\.studioTheme) private var theme
     let label: String
@@ -232,21 +258,8 @@ struct ToggleRow: View {
     var shortcut: String? = nil
 
     var body: some View {
-        Button {
-            value.toggle()
-        } label: {
-            HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(value ? theme.accent : Color.clear)
-                    .frame(width: 13, height: 13)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(value ? theme.accent : theme.border, lineWidth: 1))
-                    .overlay(
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.white)
-                            .opacity(value ? 1 : 0))
+        Toggle(isOn: $value) {
+            HStack(spacing: 6) {
                 Text(label)
                     .font(Typo.small)
                     .foregroundStyle(theme.text)
@@ -257,15 +270,14 @@ struct ToggleRow: View {
                         .foregroundStyle(theme.tertiary)
                 }
             }
-            .padding(.horizontal, Metric.gutter)
-            .frame(height: Metric.rowHeight)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .toggleStyle(.checkbox)
+        .padding(.horizontal, Metric.gutter)
+        .frame(height: Metric.rowHeight)
     }
 }
 
-/// Compact labelled slider with a monospaced readout.
+/// A real `Slider` with its value label, laid out by `LabeledContent`.
 struct ParameterSlider: View {
     @Environment(\.studioTheme) private var theme
     let label: String
@@ -276,38 +288,52 @@ struct ParameterSlider: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            HStack {
+            LabeledContent {
+                Text(String(format: format, value))
+                    .font(Typo.mono)
+                    .monospacedDigit()
+                    .foregroundStyle(theme.text)
+            } label: {
                 Text(label)
                     .font(Typo.small)
                     .foregroundStyle(theme.secondary)
-                Spacer()
-                Text(String(format: format, value))
-                    .font(Typo.mono)
-                    .foregroundStyle(theme.text)
             }
-            Slider(value: $value, in: range) { _ in onChange?() }
-                .controlSize(.mini)
-                .tint(theme.accent)
+            Slider(value: $value, in: range) { editing in
+                if !editing { onChange?() }
+            }
+            .controlSize(.mini)
+            .tint(theme.accent)
+            .accessibilityLabel(label)
         }
         .padding(.horizontal, Metric.gutter)
         .padding(.vertical, 4)
     }
 }
 
-struct PanelDivider: View {
-    @Environment(\.studioTheme) private var theme
-    var body: some View {
-        Rectangle()
-            .fill(theme.border)
-            .frame(height: 1)
-    }
-}
+/// A `Button` dressed for bars and panel headers.
+///
+/// This is a real `Button` with a `ButtonStyle` applied, not a reimplementation:
+/// it inherits activation by keyboard, the pressed state, focus, and the
+/// accessibility traits of a button, and adds only a `help` tooltip.
+struct ToolbarButton: View {
+    let systemImage: String
+    var label: String? = nil
+    var isActive: Bool = false
+    var tone: Color? = nil
+    var help: String? = nil
+    let action: () -> Void
 
-struct VerticalDivider: View {
-    @Environment(\.studioTheme) private var theme
     var body: some View {
-        Rectangle()
-            .fill(theme.border)
-            .frame(width: 1)
+        Button(action: action) {
+            if let label {
+                Label(label, systemImage: systemImage)
+                    .labelStyle(.titleAndIcon)
+            } else {
+                Label(label ?? "", systemImage: systemImage)
+                    .labelStyle(.iconOnly)
+            }
+        }
+        .buttonStyle(.kinetic(active: isActive, tone: tone))
+        .help(help ?? label ?? systemImage)
     }
 }

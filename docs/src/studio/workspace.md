@@ -18,6 +18,11 @@ become two.
 Each panel header is 22 pt, secondary-coloured, and strengthens on hover — it is
 chrome, not content.
 
+Dividers are drawn by a custom `Layout`, not by `HSplitView`. The stored fraction
+stays authoritative, so a divider is where you left it after a relaunch, and a
+deeply nested tree does not pay Auto Layout for every pane on every frame. See
+[Liquid Glass](design.md) for why.
+
 ## Panel kinds
 
 | Kind | Shows |

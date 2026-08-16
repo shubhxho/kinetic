@@ -13,8 +13,6 @@ import SwiftUI
 
 private enum PanelMetric {
     static let header: CGFloat = 22
-    /// The divider is hairline but the grab area is finger-sized; splitting the
-    /// two is what makes a 1pt line draggable without looking heavy.
     static let divider: CGFloat = 1
     static let grab: CGFloat = 9
 }
@@ -66,34 +64,152 @@ private struct PanelNodeView<Content: View>: View {
     }
 }
 
+/// Divides its space between two panes and a draggable divider.
+///
+/// Implemented with SwiftUI's `Layout` protocol — the supported extension point
+/// for custom layout — rather than `HSplitView`/`VSplitView`. Those are backed by
+/// `NSSplitView` and Auto Layout, and nesting them to the depth a panel tree
+/// reaches turns every display cycle into a constraint-solving storm: profiling
+/// a four-pane workspace showed the main thread almost entirely inside
+/// `updateConstraintsForSubtreeIfNeeded` with nothing on screen moving.
+///
+/// `Layout` also keeps the stored fraction authoritative, so divider positions
+/// survive a relaunch, which a split view's self-managed geometry would not.
+struct PanelSplitLayout: Layout {
+    var axis: PanelAxis
+    var fraction: Double
+    var dividerThickness: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews,
+                      cache: inout ()) -> CGSize {
+        CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
+    }
+
+    /// Resolve alignment guides from the bounds instead of from the children.
+    ///
+    /// `Layout`'s default implementation answers an alignment query by placing
+    /// every subview and reading the winner's guide. A panel tree nests splits
+    /// several deep, and the enclosing stack asks for a guide on every layout
+    /// pass, so each query at the root forces a full placement of the level below
+    /// it, which forces the level below that — the profile was a tower of
+    /// `explicitAlignment` frames hundreds deep. Panes never export a custom
+    /// guide, so the honest answer is the one derived from the frame, and it
+    /// costs nothing.
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout ()) -> CGFloat? {
+        switch guide {
+        case .leading: return bounds.minX
+        case .trailing: return bounds.maxX
+        default: return bounds.midX
+        }
+    }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout ()) -> CGFloat? {
+        switch guide {
+        case .top: return bounds.minY
+        case .bottom: return bounds.maxY
+        default: return bounds.midY
+        }
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews,
+                       cache: inout ()) {
+        guard subviews.count == 3 else { return }
+        let total = axis == .horizontal ? bounds.width : bounds.height
+        let available = max(total - dividerThickness, 0)
+        let first = (available * fraction).rounded()
+        let second = max(available - first, 0)
+
+        if axis == .horizontal {
+            subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY), anchor: .topLeading,
+                              proposal: ProposedViewSize(width: first, height: bounds.height))
+            subviews[1].place(at: CGPoint(x: bounds.minX + first, y: bounds.minY),
+                              anchor: .topLeading,
+                              proposal: ProposedViewSize(width: dividerThickness,
+                                                         height: bounds.height))
+            subviews[2].place(at: CGPoint(x: bounds.minX + first + dividerThickness,
+                                          y: bounds.minY),
+                              anchor: .topLeading,
+                              proposal: ProposedViewSize(width: second, height: bounds.height))
+        } else {
+            subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY), anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: first))
+            subviews[1].place(at: CGPoint(x: bounds.minX, y: bounds.minY + first),
+                              anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width,
+                                                         height: dividerThickness))
+            subviews[2].place(at: CGPoint(x: bounds.minX,
+                                          y: bounds.minY + first + dividerThickness),
+                              anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: second))
+        }
+    }
+}
+
 private struct PanelSplitView<Content: View>: View {
+    @Environment(\.studioTheme) private var theme
     @ObservedObject var store: PanelLayoutStore
     let split: PanelNode.Split
     let path: [Int]
     let content: (PanelInstance) -> Content
 
-    var body: some View {
-        GeometryReader { geometry in
-            let total = split.axis == .horizontal ? geometry.size.width : geometry.size.height
-            let available = max(total - PanelMetric.divider, 1)
-            let firstExtent = (available * split.fraction).rounded()
-            let secondExtent = max(available - firstExtent, 0)
+    /// Last measured extent along the split axis, used only to convert a drag
+    /// into a fraction. It is read from a zero-impact background probe rather
+    /// than a GeometryReader wrapping the content, so measuring cannot feed back
+    /// into sizing.
+    @State private var extent: CGFloat = 0
 
-            if split.axis == .horizontal {
-                HStack(spacing: 0) {
-                    child(split.first, index: 0).frame(width: firstExtent)
-                    splitter(extent: available)
-                    child(split.second, index: 1).frame(width: secondExtent)
-                }
-            } else {
-                VStack(spacing: 0) {
-                    child(split.first, index: 0).frame(height: firstExtent)
-                    splitter(extent: available)
-                    child(split.second, index: 1).frame(height: secondExtent)
-                }
+    var body: some View {
+        PanelSplitLayout(axis: split.axis, fraction: split.fraction,
+                         dividerThickness: PanelMetric.divider) {
+            child(split.first, index: 0)
+            divider
+            child(split.second, index: 1)
+        }
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onChange(of: proxy.size, initial: true) { _, size in
+                        extent = split.axis == .horizontal ? size.width : size.height
+                    }
             }
         }
     }
+
+    private var divider: some View {
+        Divider()
+            .overlay {
+                // The line is a hairline; the grab area is not. Separating them is
+                // what makes a 1pt divider comfortable to hit.
+                Rectangle()
+                    .fill(.clear)
+                    .frame(width: split.axis == .horizontal ? PanelMetric.grab : nil,
+                           height: split.axis == .vertical ? PanelMetric.grab : nil)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside {
+                            (split.axis == .horizontal ? NSCursor.resizeLeftRight
+                                                       : NSCursor.resizeUpDown).push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .named(spaceName))
+                            .onChanged { value in
+                                guard extent > 1 else { return }
+                                let position = split.axis == .horizontal
+                                    ? value.location.x : value.location.y
+                                store.setFraction(path, to: Double(position / extent))
+                            })
+            }
+            .coordinateSpace(name: spaceName)
+    }
+
+    private var spaceName: String { "split-\(path.map(String.init).joined(separator: "-"))" }
 
     // Type-erased purely to break the otherwise infinite `Body` recursion of a
     // view that contains itself.
@@ -102,67 +218,6 @@ private struct PanelSplitView<Content: View>: View {
             PanelNodeView(store: store, node: node, path: path + [index], content: content)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
-    }
-
-    private func splitter(extent: CGFloat) -> some View {
-        PanelSplitter(axis: split.axis, extent: extent, fraction: split.fraction) { value in
-            store.setFraction(path, to: value)
-        }
-    }
-}
-
-// MARK: - Splitter
-
-private struct PanelSplitter: View {
-    @Environment(\.studioTheme) private var theme
-    let axis: PanelAxis
-    /// Pixel length the fraction is measured against; drags are converted here
-    /// rather than in the store so the model stays resolution independent.
-    let extent: CGFloat
-    let fraction: Double
-    let onChange: (Double) -> Void
-
-    @State private var hovering = false
-    @State private var dragOrigin: Double?
-
-    var body: some View {
-        Rectangle()
-            .fill(hovering || dragOrigin != nil ? theme.accent.opacity(0.65) : theme.border)
-            .frame(width: axis == .horizontal ? PanelMetric.divider : nil,
-                   height: axis == .vertical ? PanelMetric.divider : nil)
-            .overlay(grabArea)
-            .zIndex(1)
-    }
-
-    private var grabArea: some View {
-        Rectangle()
-            .fill(Color.clear)
-            .frame(width: axis == .horizontal ? PanelMetric.grab : nil,
-                   height: axis == .vertical ? PanelMetric.grab : nil)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                hovering = inside
-                if inside {
-                    (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push()
-                } else if dragOrigin == nil {
-                    NSCursor.pop()
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        // Translation is cumulative from the gesture start, so
-                        // the anchor has to be the fraction at touch-down.
-                        let origin = dragOrigin ?? fraction
-                        if dragOrigin == nil { dragOrigin = origin }
-                        let moved = axis == .horizontal ? value.translation.width
-                                                        : value.translation.height
-                        onChange(origin + Double(moved / max(extent, 1)))
-                    }
-                    .onEnded { _ in
-                        dragOrigin = nil
-                        if !hovering { NSCursor.pop() }
-                    })
     }
 }
 
@@ -184,7 +239,7 @@ struct PanelFrame<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            PanelDivider()
+            Divider()
             content()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()

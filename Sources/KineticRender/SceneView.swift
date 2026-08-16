@@ -325,6 +325,8 @@ public struct SimulationViewport: NSViewRepresentable {
         init(parent: SimulationViewport) { self.parent = parent }
 
         public func viewport(_ view: KineticView, didUpdate stats: ViewportStats) {
+            parent.commands.notePose(azimuth: view.camera.azimuth,
+                                     elevation: view.camera.elevation)
             parent.onStats(stats)
         }
 
@@ -342,7 +344,25 @@ public struct SimulationViewport: NSViewRepresentable {
 public final class ViewportCommands: ObservableObject {
     private weak var view: KineticView?
 
+    /// The camera's orientation, republished only when it actually moves.
+    ///
+    /// The orbit camera lives inside the Metal view and nothing about dragging it
+    /// touches SwiftUI state. The axis gizmo used to track it by piggybacking on
+    /// the per-frame statistics update, which meant every statistics update also
+    /// redrew a `Canvas` — a redraw that is wasted whenever the camera is still,
+    /// which is most of the time.
+    @Published public private(set) var pose = CameraPose(azimuth: -0.9, elevation: 0.42)
+
     public init() {}
+
+    /// Publishes a new orientation if it differs enough to be visible. The
+    /// threshold is a little under a tenth of a degree; below that the gizmo's
+    /// letters do not move by a whole pixel.
+    func notePose(azimuth: Float, elevation: Float) {
+        guard abs(azimuth - pose.azimuth) > 0.0015
+            || abs(elevation - pose.elevation) > 0.0015 else { return }
+        pose = CameraPose(azimuth: azimuth, elevation: elevation)
+    }
 
     func attach(_ view: KineticView) { self.view = view }
 
@@ -358,6 +378,17 @@ public final class ViewportCommands: ObservableObject {
         }
     }
     public var camera: OrbitCamera? { view?.camera }
+}
+
+/// A camera orientation, as the UI needs to see it.
+public struct CameraPose: Equatable, Sendable {
+    public var azimuth: Float
+    public var elevation: Float
+
+    public init(azimuth: Float, elevation: Float) {
+        self.azimuth = azimuth
+        self.elevation = elevation
+    }
 }
 
 public enum CameraPreset: String, CaseIterable, Sendable {

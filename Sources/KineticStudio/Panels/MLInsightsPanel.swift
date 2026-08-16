@@ -449,7 +449,7 @@ struct MLInsightsPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            PanelDivider()
+            Divider()
             if anomalies.isEmpty && report == nil {
                 emptyState
             } else {
@@ -565,7 +565,7 @@ struct MLInsightsPanel: View {
                 if let report {
                     SectionLabel(text: "Run summary")
                     summaryParagraph(report)
-                    PanelDivider()
+                    Divider()
                 }
 
                 SectionLabel(text: "Anomalies",
@@ -585,7 +585,7 @@ struct MLInsightsPanel: View {
                     .padding(.bottom, 8)
                 }
 
-                PanelDivider()
+                Divider()
                 SectionLabel(text: "Correlations",
                              trailing: correlations.isEmpty ? nil : "top \(min(correlations.count, 8))")
                 if correlations.isEmpty {

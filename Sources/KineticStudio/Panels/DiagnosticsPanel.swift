@@ -67,6 +67,7 @@ private struct DiagnosticEntry: Identifiable {
 struct DiagnosticsPanel: View {
     @Environment(\.studioTheme) private var theme
     @ObservedObject var model: StudioModel
+    @EnvironmentObject private var live: LiveStats
 
     /// Rolling sample buffers, one per metric id.
     @State private var trends: [String: [Double]] = [:]
@@ -89,12 +90,12 @@ struct DiagnosticsPanel: View {
 
         return VStack(spacing: 0) {
             header(worst: worst, entries: entries)
-            PanelDivider()
+            Divider()
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(entries) { entry in
                         DiagnosticRow(entry: entry)
-                        PanelDivider().opacity(0.5)
+                        Divider().opacity(0.5)
                     }
                 }
                 .padding(.bottom, 8)
@@ -149,7 +150,7 @@ struct DiagnosticsPanel: View {
         record("constraints", Double(profile.constraintCount))
         record("broadphase", Double(profile.broadphasePairs))
         record("energy", energy)
-        record("realtime", model.stats.realtimeFactor)
+        record("realtime", live.value.realtimeFactor)
         record("telemetry", Double(model.bridgeConnections))
     }
 
@@ -327,7 +328,7 @@ struct DiagnosticsPanel: View {
     }
 
     private func realtimeEntry(options: SimulationOptions) -> DiagnosticEntry {
-        let factor = model.stats.realtimeFactor
+        let factor = live.value.realtimeFactor
         // 1.0 is one simulated second per wall-clock second. Below 0.95 the
         // viewport is already behind the clock; below 0.5 nothing about the run
         // feels live any more.

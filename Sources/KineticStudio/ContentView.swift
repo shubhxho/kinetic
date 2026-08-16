@@ -2,13 +2,14 @@
 //  ContentView.swift
 //  Kinetic Studio
 //
-//  The window: a Liquid Glass transport bar, a dockable panel workspace, a
-//  scrubbable timeline over recorded state, and a status bar. ⌘K opens the
-//  command palette.
+//  The window, assembled from SwiftUI's own shell: `NavigationSplitView` for the
+//  sidebar, `.inspector` for the trailing pane, `.toolbar` for the transport
+//  controls, and `.safeAreaInset` for the timeline and status bar.
 //
-//  The layout itself lives in Panels/PanelLayout.swift — this file only decides
-//  which view a given panel kind renders, so adding a panel type is a single
-//  case here plus an entry in the catalogue.
+//  Using the real shell rather than nesting HStacks is what gets the sidebar
+//  toggle, the traffic-light inset, column widths the window remembers,
+//  full-screen behaviour and Reduce Motion — none of which a hand-built
+//  three-column layout provides.
 //
 
 import AppKit
@@ -24,50 +25,162 @@ struct ContentView: View {
     @StateObject private var foxglove = FoxgloveModeController()
     @StateObject private var measurement = MeasurementState()
 
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+    @State private var inspectorPresented = true
     @State private var timelineVisible = true
 
     private var theme: StudioTheme { StudioTheme(isDark: model.isDark) }
 
     var body: some View {
-        ZStack {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            SceneTreePanel(model: model)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 248, max: 420)
+        } detail: {
+            // A plain stack, not `.safeAreaInset`. The inset modifier resolves an
+            // alignment guide against the inset content every layout pass, and
+            // resolving a guide through the panel tree forces a full placement of
+            // every pane — the profile was almost entirely nested
+            // `explicitAlignment` recursion. Stacking the bars costs nothing and
+            // the viewport does not need to draw underneath them.
             VStack(spacing: 0) {
-                toolbar
-                PanelDivider()
-
                 PanelHostView(store: panels) { instance in
                     panelContent(instance)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
                 if timelineVisible {
-                    PanelDivider()
+                    Divider()
                     TimelineBar(model: model)
                 }
-
-                PanelDivider()
+                Divider()
                 statusBar
             }
-
-            if model.showCommandPalette {
-                Color.black.opacity(0.35)
-                    .ignoresSafeArea()
-                    .onTapGesture { model.showCommandPalette = false }
-                CommandPalette(model: model, isPresented: $model.showCommandPalette)
-                    .transition(.scale(scale: 0.97).combined(with: .opacity))
-            }
+        }
+        .navigationTitle(model.sceneTitle)
+        .navigationSubtitle("\(model.world.dofCount) dof · \(model.world.linkCount) links")
+        .toolbar { toolbarContent }
+        .inspector(isPresented: $inspectorPresented) {
+            InspectorPanel(model: model)
+                .inspectorColumnWidth(min: 260, ideal: 300, max: 460)
         }
         .background(theme.background)
+        .environmentObject(model.live)
         .environment(\.studioTheme, theme)
         .environment(\.foxgloveVocabulary, foxglove.vocabulary)
         .preferredColorScheme(model.isDark ? .dark : .light)
-        .animation(.easeOut(duration: 0.12), value: model.showCommandPalette)
         .onAppear(perform: install)
+        .sheet(isPresented: $model.showCommandPalette) {
+            CommandPalette(model: model, isPresented: $model.showCommandPalette)
+        }
+    }
+
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                model.togglePlayback()
+            } label: {
+                Label(model.isPlaying ? "Pause" : "Play",
+                      systemImage: model.isPlaying ? "pause.fill" : "play.fill")
+            }
+            .help(model.isPlaying ? "Pause the simulation" : "Run the simulation")
+
+            Button {
+                model.stepOnce()
+            } label: {
+                Label("Step", systemImage: "forward.frame.fill")
+            }
+            .help("Advance one timestep")
+
+            Button {
+                model.reset()
+            } label: {
+                Label("Reset", systemImage: "arrow.counterclockwise")
+            }
+            .help("Return to the model's default pose")
+        }
+
+        ToolbarItem(placement: .principal) {
+            Picker("Speed", selection: $model.timeScale) {
+                Text("0.1×").tag(0.1)
+                Text("0.25×").tag(0.25)
+                Text("1×").tag(1.0)
+                Text("2×").tag(2.0)
+            }
+            .pickerStyle(.segmented)
+            .help("Simulation speed relative to wall clock")
+        }
+
+        ToolbarItem {
+            Menu {
+                ForEach(PanelLayoutPreset.builtins, id: \.name) { preset in
+                    Button(preset.name) { panels.apply(preset) }
+                }
+                Divider()
+                Button("Split Right") { panels.splitFocusedRight() }
+                Button("Split Down") { panels.splitFocusedDown() }
+                Button("Close Panel") { panels.closeFocused() }
+                    .disabled(!panels.canCloseFocusedPanel)
+                Divider()
+                Button("Reset Layout") { panels.resetToDefault() }
+            } label: {
+                Label(panels.activePresetName ?? "Custom", systemImage: "rectangle.split.2x2")
+            }
+            .help("Workspace layout")
+        }
+
+        ToolbarItem {
+            Button { model.commands.frameScene() } label: {
+                Label("Frame", systemImage: "viewfinder")
+            }
+            .help("Fit the camera to the model")
+        }
+
+        ToolbarItem { FoxgloveSwitch(controller: foxglove) }
+
+        ToolbarItemGroup {
+            Button { model.showCommandPalette = true } label: {
+                Label("Commands", systemImage: "magnifyingglass")
+            }
+            .help("Command palette (⌘K)")
+
+            Button { openModel() } label: {
+                Label("Open", systemImage: "folder")
+            }
+            .help("Import a URDF or MJCF model")
+
+            Button {
+                model.isRecording ? model.stopRecording() : startRecording()
+            } label: {
+                Label(model.isRecording ? "Stop recording" : "Record",
+                      systemImage: model.isRecording ? "stop.circle.fill" : "record.circle")
+            }
+            .help(model.isRecording ? "Finish the recording" : "Record to a .kinlog")
+
+            Toggle(isOn: $model.isDark) {
+                Label("Appearance", systemImage: model.isDark ? "moon.fill" : "sun.max.fill")
+            }
+            .onChange(of: model.isDark) { _, _ in model.applyAppearance() }
+            .help("Switch between light and dark")
+
+            Toggle(isOn: $timelineVisible) {
+                Label("Timeline", systemImage: "rectangle.bottomthird.inset.filled")
+            }
+            .help("Show the timeline")
+        }
     }
 
     // MARK: Wiring
 
     private func install() {
         model.applyAppearance()
+        // Starts the run at launch. Only used for measuring: the window's idle
+        // and running costs are very different numbers, and driving the transport
+        // through the UI to reach the second one is not something a profiler can
+        // do on its own.
+        if ProcessInfo.processInfo.environment["KINETIC_AUTOPLAY"] != nil {
+            model.isPlaying = true
+        }
 
         // The Foxglove controller owns the switch but not the simulation, so it
         // reaches back through closures rather than holding the model.
@@ -103,7 +216,7 @@ struct ContentView: View {
     private func panelContent(_ instance: PanelInstance) -> some View {
         switch instance.kind {
         case .viewport3D: viewport
-        case .plot: TelemetryPanel(model: model)
+        case .plot: TelemetryPanel(model: model, plots: model.plots)
         case .rawMessages: RawMessagesPanel(model: model)
         case .table: TablePanel(model: model)
         case .stateTransitions: StateTransitionsPanel(model: model)
@@ -117,210 +230,76 @@ struct ContentView: View {
         }
     }
 
-    // MARK: Toolbar
-
-    private var toolbar: some View {
-        GlassBar {
-            HStack(spacing: 10) {
-                HStack(spacing: 7) {
-                    KineticMark().frame(width: 15, height: 15)
-                    Text("Kinetic")
-                        .font(Typo.title)
-                        .foregroundStyle(theme.text)
-                }
-
-                Rectangle().fill(theme.border).frame(width: 1, height: 18)
-
-                GlassButton(model.isPlaying ? "Pause" : "Play",
-                            systemImage: model.isPlaying ? "pause.fill" : "play.fill",
-                            isActive: model.isPlaying) { model.togglePlayback() }
-                GlassButton(systemImage: "forward.frame.fill") { model.stepOnce() }
-                GlassButton(systemImage: "arrow.counterclockwise") { model.reset() }
-
-                speedControl
-
-                Rectangle().fill(theme.border).frame(width: 1, height: 18)
-
-                GlassButton(systemImage: "viewfinder") { model.commands.frameScene() }
-                layoutMenu
-
-                Spacer(minLength: 8)
-
-                paletteButton
-
-                Spacer(minLength: 8)
-
-                FoxgloveSwitch(controller: foxglove)
-
-                GlassButton(systemImage: "folder") { openModel() }
-                GlassButton(systemImage: model.isRecording ? "stop.circle.fill" : "record.circle",
-                            isActive: model.isRecording) {
-                    model.isRecording ? model.stopRecording() : startRecording()
-                }
-                GlassButton(systemImage: model.isDark ? "moon.fill" : "sun.max.fill") {
-                    model.isDark.toggle()
-                    model.applyAppearance()
-                }
-                GlassButton(systemImage: "rectangle.bottomthird.inset.filled",
-                            isActive: timelineVisible) {
-                    timelineVisible.toggle()
-                }
-            }
-            .padding(.horizontal, Metric.gutter)
-        }
-        .frame(height: Metric.toolbarHeight)
-    }
-
-    private var paletteButton: some View {
-        Button { model.showCommandPalette = true } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 10, weight: .medium))
-                Text(model.sceneTitle)
-                    .font(Typo.small.weight(.medium))
-                Text("⌘K")
-                    .font(Typo.monoSmall)
-                    .foregroundStyle(theme.tertiary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-            }
-            .foregroundStyle(theme.secondary)
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .frame(minWidth: 220)
-            .glassSurface(cornerRadius: Metric.radius)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var layoutMenu: some View {
-        Menu {
-            ForEach(PanelLayoutPreset.builtins, id: \.name) { preset in
-                Button(preset.name) { panels.apply(preset) }
-            }
-            Divider()
-            Button("Split Right") { panels.splitFocusedRight() }
-                .keyboardShortcut("\\", modifiers: .command)
-            Button("Split Down") { panels.splitFocusedDown() }
-                .keyboardShortcut("\\", modifiers: [.command, .shift])
-            Button("Close Panel") { panels.closeFocused() }
-                .disabled(!panels.canCloseFocusedPanel)
-            Divider()
-            Button("Reset Layout") { panels.resetToDefault() }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "rectangle.split.2x2")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(panels.activePresetName ?? "Custom")
-                    .font(Typo.small.weight(.medium))
-            }
-            .foregroundStyle(theme.text)
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .glassSurface(cornerRadius: Metric.radius)
-    }
-
-    private var speedControl: some View {
-        GlassSegmentedControl([0.1, 0.25, 1.0, 2.0], selection: $model.timeScale) { scale in
-            scale < 1 ? String(format: "%.2g×", scale) : "\(Int(scale))×"
-        }
-    }
-
     // MARK: Viewport
 
     @ViewBuilder
     private var viewport: some View {
-        ZStack(alignment: .topLeading) {
-            if let renderer = model.renderer {
-                SimulationViewport(
-                    world: model.world,
-                    renderer: renderer,
-                    settings: $model.settings,
-                    isPlaying: $model.isPlaying,
-                    timeScale: $model.timeScale,
-                    commands: model.commands,
-                    onStats: { model.publish(stats: $0) },
-                    onSelect: { model.selectedGeom = $0 },
-                    onWillStep: { model.sample() })
-                .id(ObjectIdentifier(model.world))
-
-                MeasurementTool(model: model, state: measurement)
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle").font(.system(size: 22))
-                    Text("Metal is unavailable on this machine.").font(Typo.body)
-                }
-                .foregroundStyle(theme.tertiary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if let renderer = model.renderer {
+            SimulationViewport(
+                world: model.world,
+                renderer: renderer,
+                settings: $model.settings,
+                isPlaying: $model.isPlaying,
+                timeScale: $model.timeScale,
+                commands: model.commands,
+                onStats: { model.publish(stats: $0) },
+                onSelect: { model.selectedGeom = $0 },
+                onWillStep: { model.sample() })
+            .id(ObjectIdentifier(model.world))
+            .overlay { MeasurementTool(model: model, state: measurement) }
+            .overlay(alignment: .topLeading) {
+                ViewportHUD(model: model).padding(Metric.gutter)
             }
-
-            ViewportHUD(model: model)
-                .padding(Metric.gutter)
-
-            HStack {
-                Spacer()
-                VStack {
-                    Spacer()
-                    AxisGizmoView(model: model)
-                        .padding(Metric.gutter)
-                }
+            .overlay(alignment: .bottomLeading) {
+                ViewportToolbar(model: model).padding(Metric.gutter)
             }
-
-            VStack {
-                Spacer()
-                HStack {
-                    ViewportToolbar(model: model)
-                        .padding(Metric.gutter)
-                    Spacer()
-                }
+            .overlay(alignment: .bottomTrailing) {
+                AxisGizmoView(model: model).padding(Metric.gutter)
             }
-
-            ScrubbingBanner(model: model)
-            SelectionCallout(model: model)
+            .overlay(alignment: .bottom) { ScrubbingBanner(model: model) }
+            .overlay(alignment: .top) { SelectionCallout(model: model) }
+        } else {
+            ContentUnavailableView("Metal is unavailable",
+                                   systemImage: "exclamationmark.triangle",
+                                   description: Text("This machine has no usable GPU, so the "
+                                                     + "viewport cannot render. The CLI's "
+                                                     + "headless renderer still works."))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Status bar
 
     private var statusBar: some View {
         HStack(spacing: 12) {
-            HStack(spacing: 5) {
+            Label {
+                Text(model.isScrubbing ? "reviewing" : (model.isPlaying ? "running" : "paused"))
+                    .font(Typo.monoSmall)
+            } icon: {
                 Circle()
                     .fill(model.isScrubbing ? Palette.warning
                                             : (model.isPlaying ? Palette.success : theme.tertiary))
                     .frame(width: 6, height: 6)
-                Text(model.isScrubbing ? "reviewing" : (model.isPlaying ? "running" : "paused"))
-                    .font(Typo.monoSmall)
-                    .foregroundStyle(theme.secondary)
             }
+            .foregroundStyle(theme.secondary)
 
             Text("\(model.world.coordinateCount) nq · \(model.world.dofCount) nv · "
                  + "\(model.world.linkCount) links · \(model.world.geomCount) geoms")
                 .font(Typo.monoSmall)
+                .monospacedDigit()
                 .foregroundStyle(theme.tertiary)
 
             Spacer()
 
             FoxgloveStatusStrip(controller: foxglove)
 
-            Text(String(format: "%.0f fps · %d instances", model.stats.frameRate,
-                        model.stats.instanceCount))
-                .font(Typo.monoSmall)
-                .foregroundStyle(theme.tertiary)
+            FrameRateReadout()
             Text(World.versionString)
                 .font(Typo.monoSmall)
                 .foregroundStyle(theme.tertiary)
         }
         .padding(.horizontal, Metric.gutter)
         .frame(height: 24)
-        .background(theme.background)
+        .background(.bar)
         .onChange(of: model.bridgeConnections) { _, count in
             foxglove.updateServerConnections(count)
         }
@@ -377,5 +356,24 @@ struct KineticMark: View {
             }
             .stroke(theme.text, style: StrokeStyle(lineWidth: max(w * 0.11, 1), lineCap: .round))
         }
+    }
+}
+
+/// The frame-rate figure in the status bar.
+///
+/// Its own view so that the ten-times-a-second stats update invalidates a single
+/// `Text` rather than the window's whole status bar.
+private struct FrameRateReadout: View {
+    @Environment(\.studioTheme) private var theme
+    @EnvironmentObject private var live: LiveStats
+
+    var body: some View {
+        // Fixed width: a status figure that resizes as it changes invalidates the
+        // layout of everything around it.
+        Text(live.value.frameRate, format: .number.precision(.fractionLength(0)))
+            .font(Typo.monoSmall)
+            .monospacedDigit()
+            .foregroundStyle(theme.tertiary)
+            .frame(width: 26, alignment: .trailing)
     }
 }

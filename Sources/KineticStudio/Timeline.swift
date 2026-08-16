@@ -26,10 +26,7 @@ struct TimelineBar: View {
 
                 Rectangle().fill(theme.border).frame(width: 1, height: 16)
 
-                Text(String(format: "%.3f s", model.displayTime))
-                    .font(Typo.mono)
-                    .foregroundStyle(theme.text)
-                    .frame(width: 78, alignment: .leading)
+                TimelineClock(model: model)
 
                 if model.isScrubbing {
                     Chip(text: "SCRUBBING", tone: Palette.warning)
@@ -159,5 +156,23 @@ struct TimelineBar: View {
                     })
         }
         .frame(height: 26)
+    }
+}
+
+/// The playhead clock. Its own view so that the live time invalidates one label
+/// rather than the whole transport bar.
+private struct TimelineClock: View {
+    @Environment(\.studioTheme) private var theme
+    @EnvironmentObject private var live: LiveStats
+    @ObservedObject var model: StudioModel
+
+    var body: some View {
+        // `displayTime` reads the same stats object this view observes, so the
+        // subscription above is what keeps it fresh.
+        _ = live.value.simulationTime
+        return Text(String(format: "%.3f s", model.displayTime))
+            .font(Typo.mono)
+            .foregroundStyle(theme.text)
+            .frame(width: 78, alignment: .leading)
     }
 }

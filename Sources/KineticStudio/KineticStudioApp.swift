@@ -42,6 +42,11 @@ struct KineticStudioApp: App {
                      destination: URL(string: "https://github.com/kinetic-sim/kinetic")!)
             }
         }
+
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 

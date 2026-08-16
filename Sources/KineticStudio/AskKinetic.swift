@@ -655,7 +655,7 @@ struct AskKinetic: View {
             }
 
             if presentation == .panel {
-                PanelDivider()
+                Divider()
                     .padding(.top, 10)
                 historySection
             } else if !history.isEmpty {

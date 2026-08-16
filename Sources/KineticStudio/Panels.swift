@@ -2,8 +2,10 @@
 //  Panels.swift
 //  Kinetic Studio
 //
-//  The dockable panels: scene tree, inspector, actuator console, telemetry
-//  strip, and the log.
+//  The panels that read and drive the simulation, built on SwiftUI's own
+//  containers: `List` for anything scrollable and selectable, `Form` with
+//  `Section` for settings, `LabeledContent` for label/value pairs, and real
+//  `Toggle`, `Slider`, `Stepper` and `Picker` controls throughout.
 //
 
 import Kinetic
@@ -13,61 +15,96 @@ import UniformTypeIdentifiers
 
 // MARK: - Scene tree
 
+/// Scenes and the loaded model, in a sidebar `List` with real selection.
 struct SceneTreePanel: View {
     @Environment(\.studioTheme) private var theme
     @ObservedObject var model: StudioModel
     @State private var expanded: Set<Int> = [0, 1, 2, 3, 4, 5, 6, 7]
+    @State private var query = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            SectionLabel(text: "Scenes")
-            ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(SceneLibrary.all, id: \.id) { entry in
-                        Button {
-                            model.load(sceneIdentifier: entry.id)
+        List(selection: Binding(
+            get: { model.selectedGeom },
+            set: { model.selectedGeom = $0; model.settings.selection = $0.map { [$0] } ?? [] }
+        )) {
+            Section("Scenes") {
+                ForEach(SceneLibrary.all, id: \.id) { entry in
+                    Button {
+                        model.load(sceneIdentifier: entry.id)
+                    } label: {
+                        Label(entry.title, systemImage: icon(for: entry.id))
+                            .foregroundStyle(model.sceneIdentifier == entry.id
+                                             ? theme.accent : theme.text)
+                    }
+                    .buttonStyle(.plain)
+                    .help(entry.summary)
+                }
+            }
+
+            Section("Model") {
+                ForEach(0..<model.world.articulationCount, id: \.self) { articulation in
+                    DisclosureGroup(isExpanded: expansion(for: articulation)) {
+                        ForEach(0..<model.world.linkCount(articulation: articulation),
+                                id: \.self) { link in
+                            linkRow(articulation: articulation, link: link)
+                        }
+                    } label: {
+                        LabeledContent {
+                            Text("\(model.world.linkCount(articulation: articulation))")
+                                .font(Typo.monoSmall)
+                                .monospacedDigit()
+                                .foregroundStyle(theme.tertiary)
                         } label: {
-                            HStack(spacing: 7) {
-                                Image(systemName: icon(for: entry.id))
-                                    .font(.system(size: 10))
-                                    .frame(width: 14)
-                                    .foregroundStyle(model.sceneIdentifier == entry.id
-                                                     ? theme.accent : theme.tertiary)
-                                Text(entry.title)
-                                    .font(Typo.small)
-                                    .foregroundStyle(theme.text)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, Metric.gutter)
-                            .frame(height: 22)
-                            .background(model.sceneIdentifier == entry.id
-                                        ? theme.accent.opacity(0.12) : Color.clear)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.bottom, 6)
-
-                PanelDivider()
-
-                SectionLabel(text: "Model", trailing: "\(model.world.linkCount) links")
-                VStack(spacing: 1) {
-                    ForEach(0..<model.world.articulationCount, id: \.self) { articulation in
-                        articulationRow(articulation)
-                        if expanded.contains(articulation) {
-                            ForEach(0..<model.world.linkCount(articulation: articulation),
-                                    id: \.self) { link in
-                                linkRow(articulation: articulation, link: link)
-                            }
+                            Text(model.world.name(articulation: articulation))
+                                .font(Typo.small.weight(.medium))
                         }
                     }
                 }
-                .padding(.bottom, 10)
             }
         }
-        .frame(width: Metric.sidebarWidth)
+        .listStyle(.sidebar)
+        .searchable(text: $query, placement: .sidebar, prompt: "Filter links")
         .background(theme.background)
+    }
+
+    private func expansion(for articulation: Int) -> Binding<Bool> {
+        Binding(
+            get: { expanded.contains(articulation) },
+            set: { isExpanded in
+                if isExpanded {
+                    expanded.insert(articulation)
+                } else {
+                    expanded.remove(articulation)
+                }
+            })
+    }
+
+    @ViewBuilder
+    private func linkRow(articulation: Int, link: Int) -> some View {
+        let name = model.world.name(articulation: articulation, link: link)
+        let kind = model.world.jointKind(articulation: articulation, link: link)
+        let geom = model.world.geomInfo.first {
+            $0.articulation == articulation && $0.link == link
+        }
+
+        if query.isEmpty || name.localizedCaseInsensitiveContains(query) {
+            LabeledContent {
+                if kind != .fixed {
+                    Text(shortName(kind))
+                        .font(Typo.monoSmall)
+                        .foregroundStyle(theme.tertiary)
+                }
+            } label: {
+                Label {
+                    Text(name).font(Typo.small).lineLimit(1)
+                } icon: {
+                    Image(systemName: kind == .fixed ? "pin" : "circle.hexagongrid")
+                        .foregroundStyle(kind == .fixed ? theme.tertiary : theme.accent)
+                }
+            }
+            .tag(geom?.index ?? -1)
+            .help("\(name) · \(kind)")
+        }
     }
 
     private func icon(for id: String) -> String {
@@ -80,73 +117,6 @@ struct SceneTreePanel: View {
         case "dominoes": return "rectangle.grid.3x2"
         default: return "cube"
         }
-    }
-
-    @ViewBuilder
-    private func articulationRow(_ index: Int) -> some View {
-        Button {
-            if expanded.contains(index) { expanded.remove(index) } else { expanded.insert(index) }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: expanded.contains(index) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(theme.tertiary)
-                    .frame(width: 10)
-                Text(model.world.name(articulation: index))
-                    .font(Typo.small.weight(.medium))
-                    .foregroundStyle(theme.text)
-                Spacer(minLength: 4)
-                Text("\(model.world.linkCount(articulation: index))")
-                    .font(Typo.monoSmall)
-                    .foregroundStyle(theme.tertiary)
-            }
-            .padding(.horizontal, Metric.gutter)
-            .frame(height: 22)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func linkRow(articulation: Int, link: Int) -> some View {
-        let kind = model.world.jointKind(articulation: articulation, link: link)
-        let isSelected = model.selectedGeom.map {
-            model.world.geomInfo.indices.contains($0)
-                && model.world.geomInfo[$0].articulation == articulation
-                && model.world.geomInfo[$0].link == link
-        } ?? false
-
-        Button {
-            if let geom = model.world.geomInfo.first(where: {
-                $0.articulation == articulation && $0.link == link
-            }) {
-                model.selectedGeom = geom.index
-                model.settings.selection = [geom.index]
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Rectangle()
-                    .fill(kind == .fixed ? theme.tertiary : theme.accent)
-                    .frame(width: 2, height: 12)
-                    .opacity(kind == .fixed ? 0.4 : 1)
-                Text(model.world.name(articulation: articulation, link: link))
-                    .font(Typo.small)
-                    .foregroundStyle(isSelected ? theme.accent : theme.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if kind != .fixed {
-                    Text(shortName(kind))
-                        .font(Typo.monoSmall)
-                        .foregroundStyle(theme.tertiary)
-                }
-            }
-            .padding(.leading, Metric.gutter + 14)
-            .padding(.trailing, Metric.gutter)
-            .frame(height: 20)
-            .background(isSelected ? theme.accent.opacity(0.10) : Color.clear)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private func shortName(_ kind: JointKind) -> String {
@@ -162,132 +132,134 @@ struct SceneTreePanel: View {
 
 // MARK: - Inspector
 
+/// State, solver parameters and display options, as a real `Form`.
 struct InspectorPanel: View {
     @Environment(\.studioTheme) private var theme
     @ObservedObject var model: StudioModel
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                SectionLabel(text: "Simulation")
-                FieldRow(label: "time", value: String(format: "%.3f s", model.stats.simulationTime))
-                FieldRow(label: "step", value: String(format: "%.3f ms", model.stats.stepMilliseconds))
-                FieldRow(label: "realtime",
-                         value: String(format: "%.2f×", model.stats.realtimeFactor),
-                         accent: model.stats.realtimeFactor >= 0.95 ? Palette.success
-                                                                    : Palette.warning)
-                FieldRow(label: "contacts", value: "\(model.stats.contactCount)")
-                FieldRow(label: "constraints", value: "\(model.stats.constraintCount)")
-                FieldRow(label: "frame rate", value: String(format: "%.0f fps", model.stats.frameRate))
-                FieldRow(label: "draw", value: String(format: "%.2f ms", model.stats.drawMilliseconds))
+        Form {
+            SimulationReadouts()
 
-                PanelDivider()
-                SectionLabel(text: "Energy")
-                FieldRow(label: "kinetic", value: String(format: "%.4f J", model.stats.kineticEnergy))
-                FieldRow(label: "potential",
-                         value: String(format: "%.4f J", model.stats.potentialEnergy))
-                FieldRow(label: "total",
-                         value: String(format: "%.4f J",
-                                       model.stats.kineticEnergy + model.stats.potentialEnergy))
+            selectionSection
+            solverSection
 
-                PanelDivider()
-                selectionSection
-
-                PanelDivider()
-                SectionLabel(text: "Solver")
-                ParameterSlider(label: "timestep (ms)",
-                                value: Binding(
-                                    get: { model.world.options.timestep * 1000 },
-                                    set: { model.world.options.timestep = $0 / 1000 }),
-                                range: 0.2...10, format: "%.2f")
-                ParameterSlider(label: "iterations",
-                                value: Binding(
-                                    get: { Double(model.world.options.solverIterations) },
-                                    set: { model.world.options.solverIterations = Int($0) }),
-                                range: 1...120, format: "%.0f")
-                ParameterSlider(label: "gravity z",
-                                value: Binding(
-                                    get: { model.world.options.gravity.z },
-                                    set: { model.world.options.gravity.z = $0 }),
-                                range: -25...5, format: "%.2f")
-                ToggleRow(label: "warm start",
-                          value: Binding(get: { model.world.options.warmStart },
-                                         set: { model.world.options.warmStart = $0 }))
-                ToggleRow(label: "joint limits",
-                          value: Binding(get: { model.world.options.enableJointLimits },
-                                         set: { model.world.options.enableJointLimits = $0 }))
-
-                PanelDivider()
-                SectionLabel(text: "Display")
-                ToggleRow(label: "grid", value: $model.settings.showGrid, shortcut: "G")
-                ToggleRow(label: "contacts", value: $model.settings.showContacts, shortcut: "C")
-                ToggleRow(label: "contact forces", value: $model.settings.showContactForces)
-                ToggleRow(label: "collision shapes",
-                          value: $model.settings.showCollisionGeometry, shortcut: "K")
-                ToggleRow(label: "link frames", value: $model.settings.showLinkFrames)
-                ToggleRow(label: "centre of mass", value: $model.settings.showCenterOfMass)
-                ToggleRow(label: "trails", value: $model.settings.showTrails, shortcut: "T")
-                ToggleRow(label: "wireframe", value: $model.settings.wireframe, shortcut: "W")
-
-                PanelDivider()
-                SectionLabel(text: "Telemetry")
-                FieldRow(label: "status",
-                         value: model.bridgeIsRunning ? "listening" : "stopped",
-                         accent: model.bridgeIsRunning ? Palette.success : theme.tertiary)
-                FieldRow(label: "address", value: "ws://localhost:\(model.bridgePort)")
-                FieldRow(label: "clients", value: "\(model.bridgeConnections)")
-                HStack(spacing: 8) {
-                    ToolbarButton(systemImage: model.bridgeIsRunning ? "stop.fill" : "antenna.radiowaves.left.and.right",
-                                  label: model.bridgeIsRunning ? "Stop server" : "Start server",
-                                  isActive: model.bridgeIsRunning) {
-                        model.toggleBridge()
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, Metric.gutter)
-                .padding(.vertical, 6)
-                Text("Any Foxglove client can connect to this address and see the live scene, "
-                     + "transforms and every plottable channel.")
-                    .font(Typo.monoSmall)
-                    .foregroundStyle(theme.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Metric.gutter)
-                    .padding(.bottom, 12)
+            Section("Display") {
+                Toggle("Grid", isOn: $model.settings.showGrid)
+                Toggle("Contacts", isOn: $model.settings.showContacts)
+                Toggle("Contact forces", isOn: $model.settings.showContactForces)
+                Toggle("Collision shapes", isOn: $model.settings.showCollisionGeometry)
+                Toggle("Link frames", isOn: $model.settings.showLinkFrames)
+                Toggle("Centre of mass", isOn: $model.settings.showCenterOfMass)
+                Toggle("Trails", isOn: $model.settings.showTrails)
+                Toggle("Wireframe", isOn: $model.settings.wireframe)
             }
+
+            telemetrySection
         }
-        .frame(width: Metric.inspectorWidth)
+        .formStyle(.grouped)
         .background(theme.background)
     }
 
     @ViewBuilder
-    private var selectionSection: some View {
-        SectionLabel(text: "Selection")
-        if let index = model.selectedGeom, model.world.geomInfo.indices.contains(index) {
-            let geom = model.world.geomInfo[index]
-            let poses = model.world.geomPoses()
-            FieldRow(label: "geom", value: geom.name)
-            FieldRow(label: "articulation", value: model.world.name(articulation: geom.articulation))
-            FieldRow(label: "link",
-                     value: model.world.name(articulation: geom.articulation, link: geom.link))
-            FieldRow(label: "shape", value: describe(geom.shape))
-            FieldRow(label: "mass",
-                     value: String(format: "%.4f kg",
-                                   model.world.mass(articulation: geom.articulation,
-                                                    link: geom.link)))
-            if index < poses.count {
-                let p = poses[index].position
-                let rpy = poses[index].orientation.eulerRPY
-                FieldRow(label: "position",
-                         value: String(format: "%.3f %.3f %.3f", p.x, p.y, p.z))
-                FieldRow(label: "rpy",
-                         value: String(format: "%.2f %.2f %.2f", rpy.x, rpy.y, rpy.z))
+    private var solverSection: some View {
+        Section("Solver") {
+            LabeledContent("Timestep (ms)") {
+                Slider(value: Binding(
+                    get: { model.world.options.timestep * 1000 },
+                    set: { model.world.options.timestep = $0 / 1000 }),
+                       in: 0.2...10)
+                .controlSize(.small)
             }
-        } else {
-            Text("Click a body in the viewport to inspect it.")
-                .font(Typo.small)
+            LabeledContent("Iterations") {
+                Stepper(value: Binding(
+                    get: { model.world.options.solverIterations },
+                    set: { model.world.options.solverIterations = $0 }),
+                        in: 1...200) {
+                    Text("\(model.world.options.solverIterations)")
+                        .font(Typo.mono)
+                        .monospacedDigit()
+                }
+            }
+            LabeledContent("Gravity z") {
+                Slider(value: Binding(
+                    get: { model.world.options.gravity.z },
+                    set: { model.world.options.gravity.z = $0 }),
+                       in: -25...5)
+                .controlSize(.small)
+            }
+            Picker("Integrator", selection: Binding(
+                get: { model.world.options.integrator },
+                set: { model.world.options.integrator = $0 })) {
+                Text("Semi-implicit Euler").tag(Integrator.semiImplicitEuler)
+                Text("Runge-Kutta 4").tag(Integrator.rungeKutta4)
+                Text("Implicit (fast)").tag(Integrator.implicitFast)
+            }
+            Toggle("Warm start", isOn: Binding(
+                get: { model.world.options.warmStart },
+                set: { model.world.options.warmStart = $0 }))
+            Toggle("Joint limits", isOn: Binding(
+                get: { model.world.options.enableJointLimits },
+                set: { model.world.options.enableJointLimits = $0 }))
+            Toggle("Threaded narrowphase", isOn: Binding(
+                get: { model.world.options.multithreaded },
+                set: { model.world.options.multithreaded = $0 }))
+        }
+    }
+
+    @ViewBuilder
+    private var telemetrySection: some View {
+        Section {
+            LabeledContent("Status") {
+                Label(model.bridgeIsRunning ? "Listening" : "Stopped",
+                      systemImage: model.bridgeIsRunning ? "dot.radiowaves.up.forward"
+                                                         : "stop.circle")
+                    .foregroundStyle(model.bridgeIsRunning ? Palette.success : theme.tertiary)
+            }
+            LabeledContent("Address", value: "ws://localhost:\(model.bridgePort)")
+            LabeledContent("Clients", value: "\(model.bridgeConnections)")
+            Button(model.bridgeIsRunning ? "Stop server" : "Start server") {
+                model.toggleBridge()
+            }
+            .buttonStyle(.kinetic(active: model.bridgeIsRunning))
+        } header: {
+            Text("Telemetry")
+        } footer: {
+            Text("Any Foxglove client can connect to this address and see the live scene, "
+                 + "transforms and every plottable channel.")
+                .font(Typo.monoSmall)
                 .foregroundStyle(theme.tertiary)
-                .padding(.horizontal, Metric.gutter)
-                .padding(.bottom, 8)
+        }
+    }
+
+    @ViewBuilder
+    private var selectionSection: some View {
+        Section("Selection") {
+            if let index = model.selectedGeom, model.world.geomInfo.indices.contains(index) {
+                let geom = model.world.geomInfo[index]
+                let poses = model.world.geomPoses()
+                LabeledContent("Geom", value: geom.name)
+                LabeledContent("Articulation",
+                               value: model.world.name(articulation: geom.articulation))
+                LabeledContent("Link", value: model.world.name(articulation: geom.articulation,
+                                                               link: geom.link))
+                LabeledContent("Shape", value: describe(geom.shape))
+                LabeledContent("Mass", value: model.world.mass(articulation: geom.articulation,
+                                                               link: geom.link),
+                               format: .number.precision(.fractionLength(4)))
+                if index < poses.count {
+                    let p = poses[index].position
+                    let rpy = poses[index].orientation.eulerRPY
+                    LabeledContent("Position",
+                                   value: String(format: "%.3f  %.3f  %.3f", p.x, p.y, p.z))
+                    LabeledContent("Roll pitch yaw",
+                                   value: String(format: "%.2f  %.2f  %.2f", rpy.x, rpy.y, rpy.z))
+                }
+            } else {
+                Text("Click a body in the viewport to inspect it.")
+                    .font(Typo.small)
+                    .foregroundStyle(theme.tertiary)
+            }
         }
     }
 
@@ -303,161 +275,205 @@ struct InspectorPanel: View {
     }
 }
 
-// MARK: - Actuator console
+// MARK: - Actuators
 
 struct ActuatorPanel: View {
     @Environment(\.studioTheme) private var theme
     @ObservedObject var model: StudioModel
-    @State private var tick = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            SectionLabel(text: "Actuators", trailing: "\(model.world.actuatorCount)")
+        Group {
             if model.world.actuatorCount == 0 {
-                Text("This model has no actuators.")
-                    .font(Typo.small)
-                    .foregroundStyle(theme.tertiary)
-                    .padding(.horizontal, Metric.gutter)
-                    .padding(.bottom, 10)
+                ContentUnavailableView("No actuators", systemImage: "bolt.slash",
+                                       description: Text("This model has none."))
             } else {
-                ScrollView {
-                    VStack(spacing: 2) {
+                List {
+                    Section("Actuators") {
                         ForEach(0..<model.world.actuatorCount, id: \.self) { index in
                             actuatorRow(index)
                         }
                     }
-                    .padding(.bottom, 8)
                 }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func actuatorRow(_ index: Int) -> some View {
-        let force = model.world.actuatorForces[index]
-        VStack(spacing: 1) {
-            HStack {
-                Text("u[\(index)]")
-                    .font(Typo.monoSmall)
-                    .foregroundStyle(theme.tertiary)
-                Spacer()
-                Text(String(format: "%.3f", model.world.control[index]))
-                    .font(Typo.mono)
-                    .foregroundStyle(theme.text)
-                Text(String(format: "%+.1f N", force))
-                    .font(Typo.monoSmall)
-                    .foregroundStyle(abs(force) > 1e-6 ? Palette.accent : theme.tertiary)
-                    .frame(width: 62, alignment: .trailing)
-            }
-            Slider(value: Binding(
-                get: { model.world.control[index] },
-                set: { model.world.control[index] = $0; tick &+= 1 }
-            ), in: -3.2...3.2)
-            .controlSize(.mini)
-            .tint(theme.accent)
-        }
-        .padding(.horizontal, Metric.gutter)
-        .padding(.vertical, 2)
-    }
-}
-
-// MARK: - Telemetry strip
-
-struct TelemetryPanel: View {
-    @Environment(\.studioTheme) private var theme
-    @ObservedObject var model: StudioModel
-    @State private var showChannelPicker = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("TELEMETRY")
-                    .font(Typo.sectionLabel)
-                    .kerning(0.6)
-                    .foregroundStyle(theme.tertiary)
-                Chip(text: "\(model.series.count) channels")
-                Spacer()
-                HStack(spacing: 4) {
-                    Text("window")
-                        .font(Typo.monoSmall)
-                        .foregroundStyle(theme.tertiary)
-                    ForEach([2.0, 8.0, 30.0], id: \.self) { seconds in
-                        Button {
-                            model.plotWindowSeconds = seconds
-                        } label: {
-                            Text("\(Int(seconds))s")
-                                .font(Typo.monoSmall)
-                                .foregroundStyle(model.plotWindowSeconds == seconds
-                                                 ? Color.white : theme.secondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(model.plotWindowSeconds == seconds
-                                            ? theme.accent : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                ToolbarButton(systemImage: "plus", label: "Channel") {
-                    showChannelPicker.toggle()
-                }
-                .popover(isPresented: $showChannelPicker, arrowEdge: .top) {
-                    channelPicker
-                }
-            }
-            .padding(.horizontal, Metric.gutter)
-            .padding(.vertical, 8)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(model.series) { series in
-                        TimeSeriesPlot(series: series,
-                                       windowSeconds: model.plotWindowSeconds,
-                                       currentTime: model.stats.simulationTime,
-                                       onRemove: { model.removePlot(series.id) })
-                            .frame(width: 268)
-                    }
-                    if model.series.isEmpty {
-                        Text("Add a channel to start plotting.")
-                            .font(Typo.small)
-                            .foregroundStyle(theme.tertiary)
-                            .frame(height: 80)
-                    }
-                }
-                .padding(.horizontal, Metric.gutter)
-                .padding(.bottom, 10)
+                .listStyle(.inset)
             }
         }
         .background(theme.background)
     }
 
-    private var channelPicker: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(model.availableChannels) { channel in
-                    Button {
-                        model.addPlot(channel)
-                        showChannelPicker = false
-                    } label: {
-                        HStack {
-                            Text(channel.label)
-                                .font(Typo.small)
-                                .foregroundStyle(theme.text)
-                            Spacer()
-                            Text(String(format: "%.3f", channel.value(in: model.world)))
-                                .font(Typo.monoSmall)
-                                .foregroundStyle(theme.tertiary)
+    @ViewBuilder
+    private func actuatorRow(_ index: Int) -> some View {
+        let names = model.world.actuatorNames
+        let name = index < names.count ? names[index] : "u[\(index)]"
+        let force = model.world.actuatorForces[index]
+
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Text(model.world.control[index],
+                         format: .number.precision(.fractionLength(3)))
+                        .font(Typo.mono)
+                        .monospacedDigit()
+                    Text(force, format: .number.precision(.fractionLength(1)))
+                        .font(Typo.monoSmall)
+                        .monospacedDigit()
+                        .foregroundStyle(abs(force) > 1e-6 ? Palette.accent : theme.tertiary)
+                        .frame(width: 56, alignment: .trailing)
+                }
+            } label: {
+                Text(name).font(Typo.small)
+            }
+            Slider(value: Binding(
+                get: { model.world.control[index] },
+                set: { model.world.control[index] = $0; model.objectWillChange.send() }),
+                   in: -3.2...3.2)
+            .controlSize(.mini)
+            .tint(theme.accent)
+            .accessibilityLabel("\(name) control")
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Joints
+
+/// Direct manipulation of every scalar joint: writes straight into `qpos` and
+/// re-runs forward kinematics, so a paused model can be posed by hand.
+struct JointPanel: View {
+    @Environment(\.studioTheme) private var theme
+    @ObservedObject var model: StudioModel
+    @State private var query = ""
+
+    private var handles: [StudioModel.JointHandle] {
+        let all = model.jointHandles()
+        guard !query.isEmpty else { return all }
+        return all.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        Group {
+            if model.jointHandles().isEmpty {
+                ContentUnavailableView("No scalar joints", systemImage: "slider.horizontal.3",
+                                       description: Text("This model has none."))
+            } else {
+                List {
+                    Section {
+                        ForEach(handles) { handle in
+                            jointRow(handle)
                         }
-                        .padding(.horizontal, 10)
-                        .frame(height: 22)
-                        .contentShape(Rectangle())
+                    } header: {
+                        HStack {
+                            Text("Joints")
+                            Spacer()
+                            Button("Zero pose") {
+                                for handle in model.jointHandles() {
+                                    model.setJoint(handle, to: 0)
+                                }
+                            }
+                            .buttonStyle(.borderless)
+                            .font(Typo.monoSmall)
+                        }
                     }
-                    .buttonStyle(.plain)
+                }
+                .listStyle(.inset)
+                .searchable(text: $query, prompt: "Filter joints")
+            }
+        }
+        .background(theme.background)
+    }
+
+    @ViewBuilder
+    private func jointRow(_ handle: StudioModel.JointHandle) -> some View {
+        let value = handle.coordinateIndex < model.world.coordinateCount
+            ? model.world.positions[handle.coordinateIndex] : 0
+        let velocity = handle.dofIndex < model.world.dofCount
+            ? model.world.velocities[handle.dofIndex] : 0
+
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Text(value, format: .number.precision(.fractionLength(3)))
+                        .font(Typo.mono)
+                        .monospacedDigit()
+                    Text(velocity, format: .number.precision(.fractionLength(2)))
+                        .font(Typo.monoSmall)
+                        .monospacedDigit()
+                        .foregroundStyle(abs(velocity) > 1e-4 ? Palette.accent : theme.tertiary)
+                        .frame(width: 48, alignment: .trailing)
+                }
+            } label: {
+                Text(handle.name).font(Typo.small).lineLimit(1)
+            }
+            Slider(value: Binding(get: { value },
+                                  set: { model.setJoint(handle, to: $0) }),
+                   in: handle.limits)
+            .controlSize(.mini)
+            .tint(theme.accent)
+            .accessibilityLabel(handle.name)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Telemetry
+
+struct TelemetryPanel: View {
+    @Environment(\.studioTheme) private var theme
+    @ObservedObject var model: StudioModel
+    @EnvironmentObject private var live: LiveStats
+    @ObservedObject var plots: PlotStore
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Text("Telemetry")
+                    .font(Typo.sectionLabel)
+                    .textCase(.uppercase)
+                    .foregroundStyle(theme.tertiary)
+
+                Picker("Window", selection: $model.plotWindowSeconds) {
+                    Text("2s").tag(2.0)
+                    Text("8s").tag(8.0)
+                    Text("30s").tag(30.0)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+
+                Spacer()
+
+                Menu {
+                    ForEach(model.availableChannels) { channel in
+                        Button(channel.label) { model.addPlot(channel) }
+                    }
+                } label: {
+                    Label("Add channel", systemImage: "plus")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+            .padding(.horizontal, Metric.gutter)
+            .padding(.vertical, 8)
+
+            if plots.series.isEmpty {
+                ContentUnavailableView("No channels", systemImage: "waveform.path.ecg",
+                                       description: Text("Add one to start plotting."))
+            } else {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(plots.series) { series in
+                            TimeSeriesPlot(series: series,
+                                           windowSeconds: model.plotWindowSeconds,
+                                           currentTime: live.value.simulationTime,
+                                           onRemove: { model.removePlot(series.id) })
+                                .frame(width: 280)
+                        }
+                    }
+                    .padding(.horizontal, Metric.gutter)
+                    .padding(.bottom, 10)
                 }
             }
-            .padding(.vertical, 6)
         }
-        .frame(width: 260, height: 340)
+        .background(theme.background)
     }
 }
 
@@ -468,42 +484,30 @@ struct ConsolePanel: View {
     @ObservedObject var model: StudioModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionLabel(text: "Log", trailing: "\(model.console.count)")
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 1) {
-                        ForEach(model.console) { line in
-                            HStack(alignment: .top, spacing: 6) {
-                                Text(timestamp(line.time))
-                                    .font(Typo.monoSmall)
-                                    .foregroundStyle(theme.tertiary)
-                                Text(line.text)
-                                    .font(Typo.monoSmall)
-                                    .foregroundStyle(color(for: line.level))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, Metric.gutter)
-                            .id(line.id)
-                        }
-                    }
-                    .padding(.bottom, 8)
+        List {
+            ForEach(model.console) { line in
+                LabeledContent {
+                    Text(line.text)
+                        .font(Typo.monoSmall)
+                        .foregroundStyle(color(for: line.level))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } label: {
+                    Text(line.time, format: .dateTime.hour().minute().second())
+                        .font(Typo.monoSmall)
+                        .monospacedDigit()
+                        .foregroundStyle(theme.tertiary)
                 }
-                .onChange(of: model.console.count) { _, _ in
-                    if let last = model.console.last {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
+                .listRowSeparator(.hidden)
             }
         }
+        .listStyle(.plain)
         .background(theme.background)
-    }
-
-    private func timestamp(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: date)
+        .overlay {
+            if model.console.isEmpty {
+                ContentUnavailableView("Log is empty", systemImage: "text.alignleft")
+            }
+        }
     }
 
     private func color(for level: ConsoleLine.Level) -> Color {
@@ -516,107 +520,50 @@ struct ConsolePanel: View {
     }
 }
 
-// MARK: - Joint posing
+/// The inspector's live numbers.
+///
+/// Split out of `InspectorPanel` so that a stats update re-evaluates these two
+/// sections instead of the entire form — the solver sliders and display toggles
+/// below them have no reason to be rebuilt ten times a second.
+private struct SimulationReadouts: View {
+    @EnvironmentObject private var live: LiveStats
 
-/// Direct manipulation of every scalar joint. Dragging a slider writes straight
-/// into qpos and re-runs forward kinematics, so a model can be posed while the
-/// simulation is paused — the fastest way to check a URDF's joint axes and
-/// limits are what you meant.
-struct JointPanel: View {
-    @Environment(\.studioTheme) private var theme
-    @ObservedObject var model: StudioModel
-    @State private var filter = ""
+    /// Live figures are laid out in a fixed column for the same reason the HUD's
+    /// are: a value that resizes as it changes drags the whole form's layout with
+    /// it on every update.
+    private func figure(_ value: Double, places: Int) -> some View {
+        Text(value, format: .number.precision(.fractionLength(places)))
+            .monospacedDigit()
+            .frame(width: 78, alignment: .trailing)
+    }
 
-    private var handles: [StudioModel.JointHandle] {
-        let all = model.jointHandles()
-        guard !filter.isEmpty else { return all }
-        return all.filter { $0.name.lowercased().contains(filter.lowercased()) }
+    private func figure(_ text: String) -> some View {
+        Text(text)
+            .monospacedDigit()
+            .frame(width: 78, alignment: .trailing)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("JOINTS")
-                    .font(Typo.sectionLabel)
-                    .kerning(0.6)
-                    .foregroundStyle(theme.tertiary)
-                Chip(text: "\(model.jointHandles().count)")
-                TextField("filter", text: $filter)
-                    .textFieldStyle(.plain)
-                    .font(Typo.small)
-                    .padding(.horizontal, 7)
-                    .frame(width: 150, height: 20)
-                    .background(theme.surface)
-                    .overlay(RoundedRectangle(cornerRadius: 4)
-                        .stroke(theme.borderSubtle, lineWidth: 1))
-                Spacer()
-                ToolbarButton(systemImage: "arrow.counterclockwise", label: "Zero pose") {
-                    for handle in model.jointHandles() { model.setJoint(handle, to: 0) }
-                }
+        let stats = live.value
+        Section("Simulation") {
+            LabeledContent("Time") { figure(stats.simulationTime, places: 3) }
+            LabeledContent("Step (ms)") { figure(stats.stepMilliseconds, places: 3) }
+            LabeledContent("Realtime") {
+                figure(stats.realtimeFactor, places: 2)
+                    .foregroundStyle(stats.realtimeFactor >= 0.95
+                                     ? Palette.success : Palette.warning)
             }
-            .padding(.horizontal, Metric.gutter)
-            .padding(.vertical, 8)
+            LabeledContent("Contacts") { figure("\(stats.contactCount)") }
+            LabeledContent("Constraints") { figure("\(stats.constraintCount)") }
+            LabeledContent("Frame rate") { figure(stats.frameRate, places: 0) }
+        }
 
-            if handles.isEmpty {
-                Text("This model has no scalar joints.")
-                    .font(Typo.small)
-                    .foregroundStyle(theme.tertiary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 10)],
-                              spacing: 6) {
-                        ForEach(handles) { handle in
-                            jointRow(handle)
-                        }
-                    }
-                    .padding(.horizontal, Metric.gutter)
-                    .padding(.bottom, 10)
-                }
+        Section("Energy") {
+            LabeledContent("Kinetic") { figure(stats.kineticEnergy, places: 4) }
+            LabeledContent("Potential") { figure(stats.potentialEnergy, places: 4) }
+            LabeledContent("Total") {
+                figure(stats.kineticEnergy + stats.potentialEnergy, places: 4)
             }
         }
-    }
-
-    @ViewBuilder
-    private func jointRow(_ handle: StudioModel.JointHandle) -> some View {
-        let value = handle.coordinateIndex < model.world.coordinateCount
-            ? model.world.positions[handle.coordinateIndex] : 0
-        let velocity = handle.dofIndex < model.world.dofCount
-            ? model.world.velocities[handle.dofIndex] : 0
-        let unit = handle.kind == .revolute ? "rad" : "m"
-
-        VStack(spacing: 2) {
-            HStack(spacing: 6) {
-                Text(handle.name)
-                    .font(Typo.small.weight(.medium))
-                    .foregroundStyle(theme.text)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Text(String(format: "%+.3f %@", value, unit))
-                    .font(Typo.mono)
-                    .foregroundStyle(theme.text)
-                Text(String(format: "%+.2f", velocity))
-                    .font(Typo.monoSmall)
-                    .foregroundStyle(abs(velocity) > 1e-4 ? Palette.accent : theme.tertiary)
-                    .frame(width: 46, alignment: .trailing)
-            }
-            Slider(value: Binding(get: { value },
-                                  set: { model.setJoint(handle, to: $0) }),
-                   in: handle.limits)
-                .controlSize(.mini)
-                .tint(theme.accent)
-            HStack {
-                Text(String(format: "%.2f", handle.limits.lowerBound))
-                Spacer()
-                Text(String(format: "%.2f", handle.limits.upperBound))
-            }
-            .font(Typo.monoSmall)
-            .foregroundStyle(theme.tertiary)
-        }
-        .padding(8)
-        .background(theme.surface)
-        .overlay(RoundedRectangle(cornerRadius: Metric.radius)
-            .stroke(theme.borderSubtle, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: Metric.radius))
     }
 }

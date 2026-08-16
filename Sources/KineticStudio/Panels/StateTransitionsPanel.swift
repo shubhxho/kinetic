@@ -116,7 +116,7 @@ struct StateTransitionsPanel: View {
 
         return VStack(spacing: 0) {
             header(tracks: tracks, frameCount: frameCount)
-            PanelDivider()
+            Divider()
             if frameCount < 2 {
                 emptyState
             } else {
