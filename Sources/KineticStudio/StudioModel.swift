@@ -10,6 +10,7 @@
 
 import Combine
 import Foundation
+import QuartzCore
 import Kinetic
 import KineticBridge
 import KineticRender
@@ -155,6 +156,8 @@ final class StudioModel: ObservableObject {
     let renderer: Renderer?
     let commands = ViewportCommands()
 
+    /// Wall-clock time of the last published stats update.
+    private var lastStatsPublish: CFTimeInterval = 0
     private var liveState: [Double]?
     private var bridge: FoxgloveBridge?
     private var recorder: LogRecorder?
@@ -174,6 +177,20 @@ final class StudioModel: ObservableObject {
     }
 
     var bridgeIsRunning: Bool { bridge?.isRunning ?? false }
+
+    /// Publishes viewport statistics at a bounded rate.
+    ///
+    /// The viewport produces these every rendered frame, and assigning a
+    /// `@Published` property that often makes SwiftUI re-evaluate every panel in
+    /// the workspace — several of which snapshot the entire world state to build
+    /// their rows. A readout of step time and contact count does not need to be
+    /// fresher than 10 Hz, and the difference is most of a CPU core.
+    func publish(stats newStats: ViewportStats) {
+        let now = CACurrentMediaTime()
+        guard now - lastStatsPublish >= 0.1 else { return }
+        lastStatsPublish = now
+        stats = newStats
+    }
 
     /// The time shown in the UI: the playhead while scrubbing, otherwise live.
     var displayTime: Double {

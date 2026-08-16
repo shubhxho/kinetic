@@ -245,7 +245,7 @@ struct ContentView: View {
                     isPlaying: $model.isPlaying,
                     timeScale: $model.timeScale,
                     commands: model.commands,
-                    onStats: { model.stats = $0 },
+                    onStats: { model.publish(stats: $0) },
                     onSelect: { model.selectedGeom = $0 },
                     onWillStep: { model.sample() })
                 .id(ObjectIdentifier(model.world))
