@@ -25,6 +25,17 @@ struct KineticStudioApp: App {
                     NotificationCenter.default.post(name: .studioOpenModel, object: nil)
                 }
                 .keyboardShortcut("o", modifiers: .command)
+
+                Button("Record…") {
+                    NotificationCenter.default.post(name: .studioToggleRecording, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .toolbar) {
+                Button("Command Palette") {
+                    NotificationCenter.default.post(name: .studioShowCommandPalette, object: nil)
+                }
+                .keyboardShortcut("k", modifiers: .command)
             }
             CommandGroup(replacing: .help) {
                 Link("Kinetic Documentation",

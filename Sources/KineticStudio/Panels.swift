@@ -515,3 +515,108 @@ struct ConsolePanel: View {
         }
     }
 }
+
+// MARK: - Joint posing
+
+/// Direct manipulation of every scalar joint. Dragging a slider writes straight
+/// into qpos and re-runs forward kinematics, so a model can be posed while the
+/// simulation is paused — the fastest way to check a URDF's joint axes and
+/// limits are what you meant.
+struct JointPanel: View {
+    @Environment(\.studioTheme) private var theme
+    @ObservedObject var model: StudioModel
+    @State private var filter = ""
+
+    private var handles: [StudioModel.JointHandle] {
+        let all = model.jointHandles()
+        guard !filter.isEmpty else { return all }
+        return all.filter { $0.name.lowercased().contains(filter.lowercased()) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("JOINTS")
+                    .font(Typo.sectionLabel)
+                    .kerning(0.6)
+                    .foregroundStyle(theme.tertiary)
+                Chip(text: "\(model.jointHandles().count)")
+                TextField("filter", text: $filter)
+                    .textFieldStyle(.plain)
+                    .font(Typo.small)
+                    .padding(.horizontal, 7)
+                    .frame(width: 150, height: 20)
+                    .background(theme.surface)
+                    .overlay(RoundedRectangle(cornerRadius: 4)
+                        .stroke(theme.borderSubtle, lineWidth: 1))
+                Spacer()
+                ToolbarButton(systemImage: "arrow.counterclockwise", label: "Zero pose") {
+                    for handle in model.jointHandles() { model.setJoint(handle, to: 0) }
+                }
+            }
+            .padding(.horizontal, Metric.gutter)
+            .padding(.vertical, 8)
+
+            if handles.isEmpty {
+                Text("This model has no scalar joints.")
+                    .font(Typo.small)
+                    .foregroundStyle(theme.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 10)],
+                              spacing: 6) {
+                        ForEach(handles) { handle in
+                            jointRow(handle)
+                        }
+                    }
+                    .padding(.horizontal, Metric.gutter)
+                    .padding(.bottom, 10)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func jointRow(_ handle: StudioModel.JointHandle) -> some View {
+        let value = handle.coordinateIndex < model.world.coordinateCount
+            ? model.world.positions[handle.coordinateIndex] : 0
+        let velocity = handle.dofIndex < model.world.dofCount
+            ? model.world.velocities[handle.dofIndex] : 0
+        let unit = handle.kind == .revolute ? "rad" : "m"
+
+        VStack(spacing: 2) {
+            HStack(spacing: 6) {
+                Text(handle.name)
+                    .font(Typo.small.weight(.medium))
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(String(format: "%+.3f %@", value, unit))
+                    .font(Typo.mono)
+                    .foregroundStyle(theme.text)
+                Text(String(format: "%+.2f", velocity))
+                    .font(Typo.monoSmall)
+                    .foregroundStyle(abs(velocity) > 1e-4 ? Palette.accent : theme.tertiary)
+                    .frame(width: 46, alignment: .trailing)
+            }
+            Slider(value: Binding(get: { value },
+                                  set: { model.setJoint(handle, to: $0) }),
+                   in: handle.limits)
+                .controlSize(.mini)
+                .tint(theme.accent)
+            HStack {
+                Text(String(format: "%.2f", handle.limits.lowerBound))
+                Spacer()
+                Text(String(format: "%.2f", handle.limits.upperBound))
+            }
+            .font(Typo.monoSmall)
+            .foregroundStyle(theme.tertiary)
+        }
+        .padding(8)
+        .background(theme.surface)
+        .overlay(RoundedRectangle(cornerRadius: Metric.radius)
+            .stroke(theme.borderSubtle, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: Metric.radius))
+    }
+}

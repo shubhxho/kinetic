@@ -138,10 +138,19 @@ final class StudioModel: ObservableObject {
     @Published var showSidebar = true
     @Published var showBottomPanel = true
     @Published var plotWindowSeconds: Double = 8
+    @Published var isScrubbing = false
+    @Published var scrubIndex = 0
+    @Published var showCommandPalette = false
+    @Published var sidebarWidth: Double = Double(Metric.sidebarWidth)
+    @Published var inspectorWidth: Double = Double(Metric.inspectorWidth)
+
+    /// Rolling window of past states; the timeline scrubs through this.
+    let history = StateHistory()
 
     let renderer: Renderer?
     let commands = ViewportCommands()
 
+    private var liveState: [Double]?
     private var bridge: FoxgloveBridge?
     private var recorder: LogRecorder?
     private var bridgeTimer: Timer?
@@ -156,9 +165,15 @@ final class StudioModel: ObservableObject {
         }
         rebuildChannels()
         applyDefaultPlots()
+        history.configure(for: world)
     }
 
     var bridgeIsRunning: Bool { bridge?.isRunning ?? false }
+
+    /// The time shown in the UI: the playhead while scrubbing, otherwise live.
+    var displayTime: Double {
+        isScrubbing && !history.isEmpty ? history.frame(at: scrubIndex).time : stats.simulationTime
+    }
 
     // MARK: Scene management
 
@@ -207,6 +222,9 @@ final class StudioModel: ObservableObject {
         settings.selection = []
         rebuildChannels()
         applyDefaultPlots()
+        history.configure(for: newWorld)
+        isScrubbing = false
+        scrubIndex = 0
         if let bridge, bridge.isRunning {
             stopBridge()
             startBridge()
@@ -217,11 +235,49 @@ final class StudioModel: ObservableObject {
     func reset() {
         world.reset()
         for index in series.indices { series[index].clear() }
+        history.clear()
+        isScrubbing = false
+        scrubIndex = 0
         log("state reset", .info)
     }
 
     func stepOnce() {
+        if isScrubbing { resumeLive() }
         commands.singleStep()
+    }
+
+    func togglePlayback() {
+        if isScrubbing { resumeLive() }
+        isPlaying.toggle()
+    }
+
+    // MARK: Scrubbing
+
+    /// Moves the playhead into the recorded window and pauses the simulation.
+    func scrub(toIndex index: Int) {
+        guard history.count > 0 else { return }
+        let clamped = max(0, min(index, history.count - 1))
+        if !isScrubbing {
+            liveState = world.saveState()
+            isScrubbing = true
+            isPlaying = false
+        }
+        scrubIndex = clamped
+        history.restore(clamped, into: world)
+    }
+
+    func scrub(toFraction fraction: Double) {
+        guard history.count > 1 else { return }
+        scrub(toIndex: Int((Double(history.count - 1) * fraction).rounded()))
+    }
+
+    /// Returns to the newest state and hands control back to the simulation.
+    func resumeLive() {
+        guard isScrubbing else { return }
+        if let liveState { world.loadState(liveState) }
+        liveState = nil
+        isScrubbing = false
+        scrubIndex = max(history.count - 1, 0)
     }
 
     // MARK: Channels
@@ -282,13 +338,138 @@ final class StudioModel: ObservableObject {
 
     /// Called once per simulated step from the viewport.
     func sample() {
+        guard !isScrubbing else { return }
         let time = world.time
         for index in series.indices {
             series[index].append(time: time, value: series[index].channel.value(in: world))
         }
+        history.record(world)
+        scrubIndex = max(history.count - 1, 0)
         recorder?.record(world)
         if recorder != nil { recordedFrames += 1 }
         bridge?.publishIfNeeded()
+    }
+
+    // MARK: Joint control
+
+    struct JointHandle: Identifiable {
+        var id: Int { coordinateIndex }
+        var name: String
+        var articulation: Int
+        var link: Int
+        var coordinateIndex: Int
+        var dofIndex: Int
+        var kind: JointKind
+        var limits: ClosedRange<Double>
+    }
+
+    /// Every scalar joint in the model, ready to pose directly.
+    func jointHandles() -> [JointHandle] {
+        var out: [JointHandle] = []
+        for articulation in 0..<world.articulationCount {
+            let qOffset = world.coordinateOffset(articulation: articulation)
+            let vOffset = world.dofOffset(articulation: articulation)
+            for link in 0..<world.linkCount(articulation: articulation) {
+                let kind = world.jointKind(articulation: articulation, link: link)
+                guard kind == .revolute || kind == .prismatic else { continue }
+                let limits = world.jointLimits(articulation: articulation, link: link)
+                    ?? (kind == .revolute ? -Double.pi...Double.pi : -1.0...1.0)
+                out.append(JointHandle(
+                    name: world.name(articulation: articulation, link: link),
+                    articulation: articulation, link: link,
+                    coordinateIndex: qOffset
+                        + world.jointCoordinateIndex(articulation: articulation, link: link),
+                    dofIndex: vOffset + world.jointDofIndex(articulation: articulation, link: link),
+                    kind: kind, limits: limits))
+            }
+        }
+        return out
+    }
+
+    func setJoint(_ handle: JointHandle, to value: Double) {
+        guard handle.coordinateIndex < world.coordinateCount else { return }
+        world.positions[handle.coordinateIndex] = value
+        world.velocities[handle.dofIndex] = 0
+        world.forward()
+        objectWillChange.send()
+    }
+
+    // MARK: Commands
+
+    func commandList() -> [StudioCommand] {
+        var commands: [StudioCommand] = []
+
+        for entry in SceneLibrary.all {
+            commands.append(StudioCommand(
+                title: "Open \(entry.title)", subtitle: entry.summary, category: .scene,
+                systemImage: "cube.transparent", shortcut: nil,
+                action: { [weak self] in self?.load(sceneIdentifier: entry.id) }))
+        }
+
+        commands.append(contentsOf: [
+            StudioCommand(title: isPlaying ? "Pause" : "Play",
+                          subtitle: "Start or stop stepping the simulation",
+                          category: .transport, systemImage: "playpause", shortcut: "space",
+                          action: { [weak self] in self?.togglePlayback() }),
+            StudioCommand(title: "Step one frame", subtitle: "Advance a single timestep",
+                          category: .transport, systemImage: "forward.frame", shortcut: ".",
+                          action: { [weak self] in self?.stepOnce() }),
+            StudioCommand(title: "Reset state", subtitle: "Return to the model's default pose",
+                          category: .transport, systemImage: "arrow.counterclockwise",
+                          shortcut: "⌘R", action: { [weak self] in self?.reset() }),
+            StudioCommand(title: "Jump to live", subtitle: "Leave the timeline and resume",
+                          category: .transport, systemImage: "forward.end", shortcut: nil,
+                          action: { [weak self] in self?.resumeLive() }),
+            StudioCommand(title: "Frame scene", subtitle: "Fit the camera to the model",
+                          category: .display, systemImage: "viewfinder", shortcut: "F",
+                          action: { [weak self] in self?.commands.frameScene() }),
+            StudioCommand(title: "Toggle grid", subtitle: "Show or hide the ground grid",
+                          category: .display, systemImage: "grid", shortcut: "G",
+                          action: { [weak self] in self?.settings.showGrid.toggle() }),
+            StudioCommand(title: "Toggle contacts",
+                          subtitle: "Contact points and force arrows",
+                          category: .display, systemImage: "smallcircle.filled.circle",
+                          shortcut: "C",
+                          action: { [weak self] in self?.settings.showContacts.toggle() }),
+            StudioCommand(title: "Toggle collision shapes",
+                          subtitle: "Draw the collision proxies instead of the visual mesh",
+                          category: .display, systemImage: "square.on.square.dashed",
+                          shortcut: "K",
+                          action: { [weak self] in
+                              self?.settings.showCollisionGeometry.toggle()
+                          }),
+            StudioCommand(title: "Toggle wireframe", subtitle: "Draw geometry as lines",
+                          category: .display, systemImage: "grid.circle", shortcut: "W",
+                          action: { [weak self] in self?.settings.wireframe.toggle() }),
+            StudioCommand(title: "Toggle link frames", subtitle: "Per-link coordinate axes",
+                          category: .display, systemImage: "move.3d", shortcut: nil,
+                          action: { [weak self] in self?.settings.showLinkFrames.toggle() }),
+            StudioCommand(title: "Toggle trails", subtitle: "Trace link paths through space",
+                          category: .display, systemImage: "scribble", shortcut: "T",
+                          action: { [weak self] in self?.settings.showTrails.toggle() }),
+            StudioCommand(title: isDark ? "Switch to light theme" : "Switch to dark theme",
+                          subtitle: "Viewport and interface appearance",
+                          category: .display, systemImage: "circle.lefthalf.filled", shortcut: nil,
+                          action: { [weak self] in
+                              guard let self else { return }
+                              self.isDark.toggle()
+                              self.applyAppearance()
+                          }),
+            StudioCommand(title: bridgeIsRunning ? "Stop telemetry server" : "Start telemetry server",
+                          subtitle: "Foxglove-compatible WebSocket on port \(bridgePort)",
+                          category: .telemetry, systemImage: "antenna.radiowaves.left.and.right",
+                          shortcut: nil, action: { [weak self] in self?.toggleBridge() }),
+            StudioCommand(title: "Open model…", subtitle: "Import a URDF or MJCF file",
+                          category: .file, systemImage: "folder", shortcut: "⌘O",
+                          action: { NotificationCenter.default.post(name: .studioOpenModel,
+                                                                    object: nil) }),
+            StudioCommand(title: isRecording ? "Stop recording" : "Record to .kinlog",
+                          subtitle: "Write a seekable log of the run",
+                          category: .file, systemImage: "record.circle", shortcut: "⌘⇧R",
+                          action: { NotificationCenter.default.post(name: .studioToggleRecording,
+                                                                    object: nil) }),
+        ])
+        return commands
     }
 
     // MARK: Recording
