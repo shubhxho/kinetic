@@ -406,12 +406,19 @@ Vec3 World::linearMomentum() const {
     return p;
 }
 
+// Angular momentum about the system centre of mass. Taking it about the world
+// origin instead would make it drift for any translating system (L_O = L_com +
+// r x p), which is not the invariant callers want to check.
 Vec3 World::angularMomentum() const {
+    const Vec3 systemCom = centerOfMass();
     Vec3 L = Vec3::zero();
     for (const Articulation &art : articulations_)
         for (const Link &l : art.links) {
-            SpatialVec f = l.spatialInertia * l.velocity;
-            L += f.ang;
+            if (l.mass <= 0) continue;
+            Mat3 R = l.pose.rot.toMatrix();
+            Mat3 Iworld = rotateInertia(R, l.inertia);
+            Vec3 vCom = l.velocity.pointVelocity(l.worldCom);
+            L += Iworld * l.velocity.ang + (l.worldCom - systemCom).cross(vCom * l.mass);
         }
     return L;
 }

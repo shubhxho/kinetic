@@ -255,7 +255,12 @@ public enum SceneLibrary {
         world.addSensor(SensorSpec(name: "tool_orientation", kind: .frameOrientation,
                                    articulation: art, link: tool))
 
+        let restPose: [Double] = [0, 0.55, -1.1, 0, 0.55, 0]
+        world.setDefaultPose(articulation: art, q: restPose)
         world.compile()
+        for (i, value) in restPose.enumerated() where i < world.actuatorCount {
+            world.control[i] = value
+        }
         _ = actuators
         return world
     }
@@ -276,8 +281,8 @@ public enum SceneLibrary {
                                name: "torso"))
 
         let legOffsets: [(String, Vec3)] = [
-            ("fl", Vec3(0.19, 0.10, 0)), ("fr", Vec3(0.19, -0.10, 0)),
-            ("hl", Vec3(-0.19, 0.10, 0)), ("hr", Vec3(-0.19, -0.10, 0)),
+            ("fl", Vec3(0.19, 0.13, 0)), ("fr", Vec3(0.19, -0.13, 0)),
+            ("hl", Vec3(-0.19, 0.13, 0)), ("hr", Vec3(-0.19, -0.13, 0)),
         ]
 
         for (name, offset) in legOffsets {
@@ -348,15 +353,24 @@ public enum SceneLibrary {
                                    link: torso))
         world.addSensor(SensorSpec(name: "imu_accel", kind: .accelerometer, articulation: art,
                                    link: torso))
-        world.setSelfCollision(articulation: art, enabled: true)
+        // Legs sweep through the torso volume by design; leg-on-leg contact is
+        // not what this scene is demonstrating, so self-collision stays off.
+        world.setSelfCollision(articulation: art, enabled: false)
         world.setDefaultPose(articulation: art, q: quadrupedRestPose())
         world.compile()
+        // Hold the crouch the default pose describes; without this the position
+        // actuators would drive every joint to zero and the robot would collapse.
+        for leg in 0..<4 {
+            world.control[leg * 3 + 0] = 0.0
+            world.control[leg * 3 + 1] = -0.8
+            world.control[leg * 3 + 2] = 1.6
+        }
         return world
     }
 
     private static func quadrupedRestPose() -> [Double] {
         // free joint (7) + 4 legs x 3 revolute joints
-        var q: [Double] = [0, 0, 0.34, 1, 0, 0, 0]
+        var q: [Double] = [0, 0, 0.30, 1, 0, 0, 0]
         for _ in 0..<4 {
             q += [0.0, -0.8, 1.6]
         }

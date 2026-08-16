@@ -450,6 +450,78 @@ void World::integratePositions(Scalar h, const VecX &vel) {
     }
 }
 
+// Re-runs the smooth half of the pipeline at the current (qpos, qvel) and
+// writes the unconstrained acceleration into `accelOut`.
+void World::evaluateSmoothAcceleration(VecX &accelOut) {
+    forwardKinematics();
+    compositeRigidBodyInertia();
+    inverseDynamicsBias();
+    applyForces();
+    factorMass();
+    unconstrainedAcceleration();
+    accelOut.assign(nv_, 0);
+    for (size_t ai = 0; ai < articulations_.size(); ++ai) {
+        const Articulation &art = articulations_[ai];
+        for (int k = 0; k < art.nv; ++k)
+            accelOut[art.vOffset + k] = caches_[ai].accelFree[k];
+    }
+}
+
+// Classical fourth-order Runge-Kutta over the smooth dynamics. Position updates
+// go through integratePositions(), so quaternions stay on the manifold at every
+// stage. Only used when no constraint is active this step: constraint impulses
+// are not differentiable, and evaluating them at intermediate stages would cost
+// four solves for a result no more accurate than the first-order update.
+void World::integrateRK4(Scalar h) {
+    VecX q0 = qpos, v0 = qvel;
+    VecX a1, a2, a3, a4;
+
+    evaluateSmoothAcceleration(a1);
+
+    // Stage 2 at t + h/2.
+    VecX v1(nv_);
+    for (int k = 0; k < nv_; ++k) v1[k] = v0[k] + Scalar(0.5) * h * a1[k];
+    qpos = q0;
+    forwardKinematics();
+    integratePositions(h * Scalar(0.5), v0);
+    qvel = v1;
+    evaluateSmoothAcceleration(a2);
+
+    // Stage 3 at t + h/2.
+    VecX v2(nv_);
+    for (int k = 0; k < nv_; ++k) v2[k] = v0[k] + Scalar(0.5) * h * a2[k];
+    qpos = q0;
+    forwardKinematics();
+    integratePositions(h * Scalar(0.5), v1);
+    qvel = v2;
+    evaluateSmoothAcceleration(a3);
+
+    // Stage 4 at t + h.
+    VecX v3(nv_);
+    for (int k = 0; k < nv_; ++k) v3[k] = v0[k] + h * a3[k];
+    qpos = q0;
+    forwardKinematics();
+    integratePositions(h, v2);
+    qvel = v3;
+    evaluateSmoothAcceleration(a4);
+
+    VecX vAvg(nv_), aAvg(nv_);
+    for (int k = 0; k < nv_; ++k) {
+        aAvg[k] = (a1[k] + 2 * a2[k] + 2 * a3[k] + a4[k]) / Scalar(6);
+        vAvg[k] = (v0[k] + 2 * v1[k] + 2 * v2[k] + v3[k]) / Scalar(6);
+    }
+
+    qpos = q0;
+    qvel = v0;
+    forwardKinematics();
+    integratePositions(h, vAvg);
+    for (int k = 0; k < nv_; ++k) {
+        Scalar v = v0[k] + h * aAvg[k];
+        qvel[k] = std::isfinite(v) ? clampf(v, -options.maxVelocity, options.maxVelocity) : 0;
+        qacc[k] = aAvg[k];
+    }
+}
+
 void World::integrate(Scalar h) {
     for (int k = 0; k < nv_; ++k) {
         Scalar v = qvel[k] + h * qacc[k];
@@ -510,7 +582,13 @@ void World::step() {
     solveConstraints();
     auto t6 = Clock::now();
 
-    integrate(options.timestep);
+    // RK4 buys accuracy only while the dynamics stay smooth; the moment a
+    // constraint is active the step falls back to the first-order update.
+    if (options.integrator == Integrator::RK4 && profile_.constraintCount == 0) {
+        integrateRK4(options.timestep);
+    } else {
+        integrate(options.timestep);
+    }
     time += options.timestep;
     auto t7 = Clock::now();
 

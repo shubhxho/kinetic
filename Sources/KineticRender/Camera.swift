@@ -110,6 +110,6 @@ public struct OrbitCamera {
         let center = (lo + hi) * 0.5
         let radius = max(simd_length(hi - lo) * 0.5, 0.25)
         target = center
-        distance = radius / tan(fieldOfView * 0.5) * 1.35
+        distance = radius / tan(fieldOfView * 0.5) * 1.12
     }
 }

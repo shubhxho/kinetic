@@ -184,6 +184,8 @@ class World {
     void solveConstraints();
     void integrate(Scalar h);
     void integratePositions(Scalar h, const VecX &vel);
+    void evaluateSmoothAcceleration(VecX &accelOut);
+    void integrateRK4(Scalar h);
     void solveMassInverse(int art, const Scalar *rhs, Scalar *out) const;
 
     std::vector<Articulation> articulations_;

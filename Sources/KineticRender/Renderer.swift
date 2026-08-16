@@ -337,7 +337,8 @@ public final class Renderer {
 
         for (index, geom) in info.enumerated() {
             guard index < geomTransforms.count else { break }
-            if case .plane = geom.shape { continue }  // the grid stands in for planes
+            var isPlane = false
+            if case .plane = geom.shape { isPlane = true }
             let visible = geom.visible ? settings.showVisualGeometry : false
             let asCollision = geom.collidable && settings.showCollisionGeometry
             guard visible || asCollision else { continue }
@@ -360,6 +361,9 @@ public final class Renderer {
             }
             byKey[key, default: []].append(instance)
 
+            // Ground planes are shadow receivers, not shadow casters, and their
+            // extent would blow out the light frustum if it had to contain them.
+            guard !isPlane else { continue }
             let position = model.columns.3.xyz
             let radius = simd_length(scale) + 0.05
             lo = simd_min(lo, position - SIMD3<Float>(repeating: radius))
@@ -508,7 +512,8 @@ public final class Renderer {
         uniforms.params = SIMD4<Float>(settings.theme.exposure, Float(world.time),
                                        1.0 / 2048.0, settings.theme.ambientIntensity)
         uniforms.gridColor = settings.theme.gridColor
-        uniforms.gridParams = SIMD4<Float>(0.25, 4, max(camera.distance * 6, 30),
+        let cell = gridCell(for: camera.distance)
+        uniforms.gridParams = SIMD4<Float>(cell, 5, camera.distance * 3.2,
                                            settings.showGrid ? 1 : 0)
         uniforms.lightViewProjection = shadowMatrix(bounds: bounds, lightDirection: lightDirection)
 
@@ -568,16 +573,6 @@ public final class Renderer {
             encoder.setCullMode(.back)
             encoder.setVertexBytes(&uniforms, length: MemoryLayout<FrameUniforms>.stride, index: 1)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FrameUniforms>.stride, index: 1)
-
-            // Grid first: it writes no depth, so geometry still occludes it.
-            if settings.showGrid {
-                encoder.setRenderPipelineState(gridPipeline)
-                encoder.setDepthStencilState(gridDepthState)
-                var plane = SIMD4<Float>(max(camera.distance * 12, 60), 0, 0, 0)
-                encoder.setVertexBytes(&plane, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
-                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
-                drawCalls += 1
-            }
 
             encoder.setRenderPipelineState(scenePipeline)
             encoder.setDepthStencilState(sceneDepthState)
@@ -669,6 +664,18 @@ public final class Renderer {
         lastDrawMilliseconds = (CACurrentMediaTime() - start) * 1000
     }
 
+
+    /// Picks a 1-2-5 grid cell that keeps roughly 25 divisions across the view,
+    /// so the grid stays readable from a tabletop scene up to a warehouse.
+    private func gridCell(for distance: Float) -> Float {
+        let target = max(distance, 0.2) / 22
+        let exponent = floor(log10(target))
+        let decade = pow(10, exponent)
+        let normalized = target / decade
+        let nice: Float = normalized < 1.5 ? 1 : (normalized < 3.5 ? 2 : (normalized < 7.5 ? 5 : 10))
+        return nice * decade
+    }
+
     /// Fits an orthographic light frustum around the scene bounds.
     private func shadowMatrix(bounds: (min: SIMD3<Float>, max: SIMD3<Float>),
                               lightDirection: SIMD3<Float>) -> simd_float4x4 {
@@ -719,8 +726,8 @@ public final class Renderer {
         uniforms.params = SIMD4<Float>(settings.theme.exposure, Float(world.time), 1.0 / 2048.0,
                                        settings.theme.ambientIntensity)
         uniforms.gridColor = settings.theme.gridColor
-        uniforms.gridParams = SIMD4<Float>(0.25, 4, max(camera.distance * 6, 30),
-                                           settings.showGrid ? 1 : 0)
+        uniforms.gridParams = SIMD4<Float>(gridCell(for: camera.distance), 5,
+                                           camera.distance * 3.2, settings.showGrid ? 1 : 0)
         uniforms.lightViewProjection = shadowMatrix(bounds: bounds, lightDirection: lightDirection)
 
         let shadowPass = MTLRenderPassDescriptor()
@@ -770,13 +777,6 @@ public final class Renderer {
             encoder.setCullMode(.back)
             encoder.setVertexBytes(&uniforms, length: MemoryLayout<FrameUniforms>.stride, index: 1)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FrameUniforms>.stride, index: 1)
-            if settings.showGrid {
-                encoder.setRenderPipelineState(gridPipeline)
-                encoder.setDepthStencilState(gridDepthState)
-                var plane = SIMD4<Float>(max(camera.distance * 12, 60), 0, 0, 0)
-                encoder.setVertexBytes(&plane, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
-                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
-            }
             encoder.setRenderPipelineState(scenePipeline)
             encoder.setDepthStencilState(sceneDepthState)
             encoder.setFragmentTexture(shadowMap, index: 0)
@@ -791,6 +791,14 @@ public final class Renderer {
                                               indexType: .uint32, indexBuffer: mesh.indexBuffer,
                                               indexBufferOffset: 0,
                                               instanceCount: batch.instances.count)
+            }
+            if settings.showGrid {
+                encoder.setRenderPipelineState(gridPipeline)
+                encoder.setDepthStencilState(gridDepthState)
+                encoder.setCullMode(.none)
+                var plane = SIMD4<Float>(camera.distance * 5.0, 0, 0, 0.0015)
+                encoder.setVertexBytes(&plane, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
             }
             encoder.endEncoding()
         }

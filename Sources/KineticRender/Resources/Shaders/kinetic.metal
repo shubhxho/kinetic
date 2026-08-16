@@ -123,11 +123,17 @@ static float3 hemisphere(float3 n, float3 sky, float3 ground) {
     return mix(ground, sky, t);
 }
 
+// Author-facing colours are sRGB; lighting has to happen in linear space or
+// every surface reads several stops too bright once the resolve gamma is applied.
+static float3 toLinear(float3 srgb) {
+    return pow(max(srgb, 0.0), float3(2.2));
+}
+
 fragment float4 scene_fragment(SceneVertexOut in [[stage_in]],
                                constant FrameUniforms &frame [[buffer(1)]],
                                depth2d<float> shadowMap [[texture(0)]],
                                sampler shadowSampler [[sampler(0)]]) {
-    float3 albedo = in.color.rgb;
+    float3 albedo = toLinear(in.color.rgb);
     float metallic = clamp(in.params.x, 0.0, 1.0);
     float roughness = clamp(in.params.y, 0.045, 1.0);
     float emissive = in.params.z;
@@ -154,7 +160,8 @@ fragment float4 scene_fragment(SceneVertexOut in [[stage_in]],
     float3 radiance = frame.lightColor.rgb * frame.lightDirection.w * shadow;
     float3 direct = (kd * albedo / M_PI_F + specular) * radiance * ndotl;
 
-    float3 ambientColor = hemisphere(n, frame.skyColor.rgb, frame.groundColor.rgb);
+    float3 ambientColor = hemisphere(n, toLinear(frame.skyColor.rgb),
+                                     toLinear(frame.groundColor.rgb));
     // Cheap specular occlusion keeps grazing angles from blowing out.
     float horizon = clamp(1.0 - roughness, 0.0, 1.0);
     float3 ambient = ambientColor * albedo * frame.params.w * (1.0 - metallic * 0.5)
@@ -212,20 +219,21 @@ fragment float4 grid_fragment(GridVertexOut in [[stage_in]],
     float major = 1.0 - min(min(majorGrid.x, majorGrid.y), 1.0);
 
     float distance = length(in.worldPosition.xy - frame.cameraPosition.xy);
-    float fade = 1.0 - smoothstep(fadeDistance * 0.35, fadeDistance, distance);
+    float fade = 1.0 - smoothstep(fadeDistance * 0.25, fadeDistance, distance);
+    fade *= fade;
 
-    float3 color = frame.gridColor.rgb;
-    float alpha = (minor * 0.35 + major * 0.85) * fade * opacity;
+    float3 color = pow(max(frame.gridColor.rgb, 0.0), float3(2.2));
+    float alpha = (minor * 0.20 + major * 0.70) * fade * opacity;
 
     // Axis lines: X in red, Y in green, matched to the inspector's axis chips.
-    float axisWidth = max(derivative.x, derivative.y) * cell * 1.2;
+    float axisWidth = max(derivative.x, derivative.y) * cell * 1.1;
     if (abs(in.worldPosition.y) < axisWidth) {
-        color = mix(color, float3(0.94, 0.27, 0.34), 0.85);
-        alpha = max(alpha, 0.7 * fade);
+        color = mix(color, pow(float3(0.85, 0.30, 0.36), 2.2), 0.75);
+        alpha = max(alpha, 0.55 * fade);
     }
     if (abs(in.worldPosition.x) < axisWidth) {
-        color = mix(color, float3(0.20, 0.80, 0.45), 0.85);
-        alpha = max(alpha, 0.7 * fade);
+        color = mix(color, pow(float3(0.24, 0.72, 0.46), 2.2), 0.75);
+        alpha = max(alpha, 0.55 * fade);
     }
 
     if (alpha < 0.001) discard_fragment();
@@ -282,7 +290,7 @@ fragment float4 overlay_fragment(OverlayVertexOut in [[stage_in]],
                                  constant FrameUniforms &frame [[buffer(1)]]) {
     float shade = 0.55 + 0.45 * max(dot(normalize(in.normal),
                                         normalize(frame.lightDirection.xyz)), 0.0);
-    return float4(in.color.rgb * shade, in.color.a);
+    return float4(pow(max(in.color.rgb, 0.0), float3(2.2)) * shade, in.color.a);
 }
 
 // ── post processing ─────────────────────────────────────────────────────

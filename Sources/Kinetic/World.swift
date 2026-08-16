@@ -303,8 +303,19 @@ public struct SensorSpec: Sendable {
     }
 }
 
+public enum Integrator: Int32, Sendable, CaseIterable {
+    /// First order, unconditionally the most robust with contacts. Default.
+    case semiImplicitEuler = 0
+    /// Fourth order over the smooth dynamics; falls back to Euler on any step
+    /// where a contact, joint limit or equality constraint is active.
+    case rungeKutta4 = 1
+    /// Euler with implicit damping terms only.
+    case implicitFast = 2
+}
+
 public struct SimulationOptions: Sendable {
     public var timestep: Double = 1.0 / 500.0
+    public var integrator: Integrator = .semiImplicitEuler
     public var gravity: Vec3 = Vec3(0, 0, -9.81)
     public var solverIterations: Int = 30
     public var relaxationIterations: Int = 6
@@ -325,6 +336,7 @@ public struct SimulationOptions: Sendable {
 
     init(_ c: kn_options) {
         timestep = c.timestep
+        integrator = Integrator(rawValue: c.integrator) ?? .semiImplicitEuler
         gravity = Vec3(c.gravity.0, c.gravity.1, c.gravity.2)
         solverIterations = Int(c.solverIterations)
         relaxationIterations = Int(c.relaxationIterations)
@@ -346,6 +358,7 @@ public struct SimulationOptions: Sendable {
         var c = kn_options()
         kn_options_defaults(&c)
         c.timestep = timestep
+        c.integrator = integrator.rawValue
         c.gravity = (gravity.x, gravity.y, gravity.z)
         c.solverIterations = Int32(solverIterations)
         c.relaxationIterations = Int32(relaxationIterations)
