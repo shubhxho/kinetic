@@ -9,6 +9,12 @@
 - [Kinetic Studio](./getting-started/studio.md)
 - [The `kinetic` CLI](./getting-started/cli.md)
 
+# Studio
+
+- [Panels and workspaces](./studio/workspace.md)
+- [Liquid Glass](./studio/design.md)
+- [Foxglove mode](./studio/foxglove-mode.md)
+
 # Concepts
 
 - [Architecture](./concepts/architecture.md)
@@ -29,11 +35,23 @@
 
 - [Cookbook](./cookbook.md)
 
+# Machine learning
+
+- [Overview](./ml/overview.md)
+- [Learned control](./ml/policies.md)
+- [Telemetry insight](./ml/insights.md)
+- [Scene language](./ml/language.md)
+
+# Models
+
+- [The model library](./models.md)
+
 # Formats
 
 - [URDF](./formats/urdf.md)
 - [MJCF](./formats/mjcf.md)
 - [Meshes](./formats/meshes.md)
+- [USD](./formats/usd.md)
 - [The `.kinlog` recording format](./formats/kinlog.md)
 
 # Telemetry

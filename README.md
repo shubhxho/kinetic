@@ -32,7 +32,8 @@ No Python. No ROS. No container. No CUDA. One build command, under a minute.
 | **Kinetic** | Swift API, URDF and MJCF importers, mesh loading, Quickhull, `.kinlog` recording. |
 | **KineticRender** | Metal forward PBR renderer — instanced geometry, shadow mapping, contact and frame overlays, headless snapshots. |
 | **KineticBridge** | A hand-written RFC 6455 server speaking the Foxglove WebSocket protocol. |
-| **KineticStudio** | SwiftUI app: viewport, timeline scrubbing over full simulation state, live plots, joint posing, command palette. |
+| **KineticML** | On-device machine learning through MLX — learned control, streaming anomaly detection, natural-language scene commands. |
+| **KineticStudio** | SwiftUI app with Liquid Glass: dockable panel workspace, timeline scrubbing over full simulation state, live plots, joint posing, command palette. |
 
 ## Physics
 
@@ -111,28 +112,70 @@ kinetic serve arm --port 8765                 # stream to Foxglove
 open "dist/Kinetic Studio.app"
 ```
 
+- **Dockable panel workspace** — a binary-split layout tree with drag splitters
+  and four presets, including a Foxglove-shaped one. Twelve panel kinds: 3D
+  viewport, plots, raw messages, table, state transitions, diagnostics, log,
+  joints, actuators, scene tree, inspector, ML insights.
+- **Liquid Glass** chrome on macOS 26 (`GlassEffectContainer`, `.glassEffect`,
+  `.buttonStyle(.glass)`), with a deliberate `.ultraThinMaterial` fallback below.
 - **Timeline scrubbing over full simulation state.** Twenty seconds of every
   `qpos`, `qvel` and contact set, restored directly. Not a replay of messages —
   the actual state, resumable.
 - **Command palette** (`⌘K`) for every action.
-- **Live plots** of any channel the model exposes: joints, sensors, actuator
-  forces, step time, solver residual, energy.
 - **Joint posing** — drag a slider, watch the link move, verify an imported
   URDF's axes.
 - **Solver parameters editable while running.**
 
-## Talks to Foxglove, no bridge
+## On-device ML
+
+Through [MLX](https://github.com/ml-explore/mlx-swift), on the same GPU the
+viewport uses. No Python, no separate process.
+
+- **Learned control** — a cart-pole policy trained in-repo by cross-entropy
+  method, measured against an analytic LQR baseline derived from the scene's
+  real inertias.
+- **Telemetry insight** — seven streaming statistical detectors plus an optional
+  learned joint-pattern mode, at ~1 µs per step for nine channels. Explanations
+  name this engine's actual tuning knobs, and a six-second run of pure noise
+  produces zero false positives.
+- **Scene language** — "drop five 10 cm boxes from 2 metres onto ice" parses
+  deterministically, shows you the plan, and changes nothing until you approve.
+
+Each degrades honestly when MLX is unavailable rather than failing.
+
+## Robot models
+
+```bash
+kinetic models list
+kinetic models fetch unitree-go2
+kinetic models validate unitree-go2
+```
+
+Fourteen published robots — Franka, UR, Unitree Go2/G1/H1, ANYmal, Shadow Hand,
+Robotiq, and three NVIDIA IsaacGymEnvs URDFs. Every upstream URL was verified
+before it was recorded, licences are surfaced, and nothing is re-hosted.
+
+USD import via ModelIO brings in Omniverse and Isaac assets, with the Y-up to
+Z-up conversion applied to transforms and vertices and a best-effort UsdPhysics
+parser for ASCII layers. The boundary between what is read and what is inferred
+is explicit — nothing invents a mass silently.
+
+## Talks to Foxglove, both directions
 
 Kinetic *is* the WebSocket server. Point any Foxglove client at
 `ws://localhost:8765` and the scene appears in its 3D panel with a live transform
 tree, contact arrows, and every numeric channel plottable. Clients can publish
 control back.
 
+It is also a **client**: the Foxglove switch in Studio can attach to a Kinetic
+instance running on another machine, subscribe to its topics and drive its
+actuators.
+
 ## Formats
 
 | Reads | Writes |
 | --- | --- |
-| URDF, MJCF | `.kinlog` (seekable, self-describing) |
+| URDF, MJCF, USD/USDA/USDC/USDZ | `.kinlog` (seekable, self-describing) |
 | STL (binary + ASCII), OBJ, ASCII PLY | CSV channel export |
 | | PNG (headless render) |
 
@@ -158,9 +201,11 @@ brew install mdbook
 mdbook serve docs --open
 ```
 
-24 chapters: getting started, the conventions everything obeys, the actual
-algorithms with their equations, both file formats, the wire protocol, both API
-surfaces, benchmarks and troubleshooting.
+32 chapters: getting started, the Studio workspace, the conventions everything
+obeys, the actual algorithms with their equations, a cookbook of runnable
+recipes, the ML features, the model library, every file format, the wire
+protocol, both API surfaces, benchmarks, comparisons, troubleshooting and a
+glossary.
 
 ## License
 
