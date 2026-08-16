@@ -20,6 +20,9 @@ struct HistoryFrame {
     var contactCount: Int
     var stepMilliseconds: Double
     var totalEnergy: Double
+    var solverResidual: Double
+    var solverIterations: Int
+    var constraintCount: Int
 }
 
 final class StateHistory {
@@ -51,7 +54,8 @@ final class StateHistory {
         capacity = max(64, Int(windowSeconds / timestep))
         states = Array(repeating: [], count: capacity)
         frames = Array(repeating: HistoryFrame(time: 0, contactCount: 0, stepMilliseconds: 0,
-                                               totalEnergy: 0),
+                                               totalEnergy: 0, solverResidual: 0,
+                                               solverIterations: 0, constraintCount: 0),
                        count: capacity)
         head = 0
         filled = false
@@ -69,7 +73,10 @@ final class StateHistory {
         frames[head] = HistoryFrame(time: world.time,
                                     contactCount: profile.contactCount,
                                     stepMilliseconds: profile.total,
-                                    totalEnergy: world.kineticEnergy + world.potentialEnergy)
+                                    totalEnergy: world.kineticEnergy + world.potentialEnergy,
+                                    solverResidual: profile.solverResidual,
+                                    solverIterations: profile.solverIterations,
+                                    constraintCount: profile.constraintCount)
         head = (head + 1) % capacity
         if head == 0 { filled = true }
     }

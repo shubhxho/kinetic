@@ -2,37 +2,29 @@
 //  ContentView.swift
 //  Kinetic Studio
 //
-//  Window layout: transport toolbar, three resizable columns (scene tree,
-//  viewport, inspector), a scrubbable timeline, a telemetry drawer, and a status
-//  bar. ⌘K opens the command palette.
+//  The window: a Liquid Glass transport bar, a dockable panel workspace, a
+//  scrubbable timeline over recorded state, and a status bar. ⌘K opens the
+//  command palette.
+//
+//  The layout itself lives in Panels/PanelLayout.swift — this file only decides
+//  which view a given panel kind renders, so adding a panel type is a single
+//  case here plus an entry in the catalogue.
 //
 
 import AppKit
 import Kinetic
+import KineticBridge
 import KineticRender
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = StudioModel()
-    @State private var bottomHeight: CGFloat = 208
-    @State private var bottomTab = BottomTab.telemetry
+    @StateObject private var panels = PanelLayoutStore()
+    @StateObject private var foxglove = FoxgloveModeController()
+    @StateObject private var measurement = MeasurementState()
 
-    enum BottomTab: String, CaseIterable {
-        case telemetry = "Telemetry"
-        case joints = "Joints"
-        case actuators = "Actuators"
-        case log = "Log"
-
-        var systemImage: String {
-            switch self {
-            case .telemetry: return "waveform.path.ecg"
-            case .joints: return "slider.horizontal.3"
-            case .actuators: return "bolt.horizontal"
-            case .log: return "text.alignleft"
-            }
-        }
-    }
+    @State private var timelineVisible = true
 
     private var theme: StudioTheme { StudioTheme(isDark: model.isDark) }
 
@@ -42,35 +34,14 @@ struct ContentView: View {
                 toolbar
                 PanelDivider()
 
-                HStack(spacing: 0) {
-                    if model.showSidebar {
-                        SceneTreePanel(model: model)
-                            .frame(width: model.sidebarWidth)
-                        ResizeHandle(axis: .horizontal) { delta in
-                            model.sidebarWidth = min(max(model.sidebarWidth + delta, 190), 420)
-                        }
-                    }
-
-                    viewport
-
-                    if model.showInspector {
-                        ResizeHandle(axis: .horizontal) { delta in
-                            model.inspectorWidth = min(max(model.inspectorWidth - delta, 240), 460)
-                        }
-                        InspectorPanel(model: model)
-                            .frame(width: model.inspectorWidth)
-                    }
+                PanelHostView(store: panels) { instance in
+                    panelContent(instance)
                 }
-                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                PanelDivider()
-                TimelineBar(model: model)
-
-                if model.showBottomPanel {
-                    ResizeHandle(axis: .vertical) { delta in
-                        bottomHeight = min(max(bottomHeight - delta, 120), 560)
-                    }
-                    bottomPanel.frame(height: bottomHeight)
+                if timelineVisible {
+                    PanelDivider()
+                    TimelineBar(model: model)
                 }
 
                 PanelDivider()
@@ -87,13 +58,29 @@ struct ContentView: View {
         }
         .background(theme.background)
         .environment(\.studioTheme, theme)
+        .environment(\.foxgloveVocabulary, foxglove.vocabulary)
         .preferredColorScheme(model.isDark ? .dark : .light)
         .animation(.easeOut(duration: 0.12), value: model.showCommandPalette)
         .onAppear(perform: install)
     }
 
+    // MARK: Wiring
+
     private func install() {
         model.applyAppearance()
+
+        // The Foxglove controller owns the switch but not the simulation, so it
+        // reaches back through closures rather than holding the model.
+        foxglove.onStartServer = { port in
+            model.bridgePort = port
+            model.startBridge()
+        }
+        foxglove.onStopServer = { model.stopBridge() }
+        foxglove.onLog = { model.log("foxglove: \($0)") }
+        foxglove.onApplyWorkspace = { workspace in
+            panels.apply(workspace == .foxglove ? .foxglove : .default)
+        }
+
         NotificationCenter.default.addObserver(forName: .studioOpenModel, object: nil,
                                                queue: .main) { _ in openModel() }
         NotificationCenter.default.addObserver(forName: .studioToggleRecording, object: nil,
@@ -108,119 +95,141 @@ struct ContentView: View {
         }
     }
 
+    // MARK: Panel content
+
+    /// Maps a panel kind onto a view. This is the only place that knows both
+    /// halves, which is why the layout engine and the panels can evolve apart.
+    @ViewBuilder
+    private func panelContent(_ instance: PanelInstance) -> some View {
+        switch instance.kind {
+        case .viewport3D: viewport
+        case .plot: TelemetryPanel(model: model)
+        case .rawMessages: RawMessagesPanel(model: model)
+        case .table: TablePanel(model: model)
+        case .stateTransitions: StateTransitionsPanel(model: model)
+        case .diagnostics: DiagnosticsPanel(model: model)
+        case .log: ConsolePanel(model: model)
+        case .jointControl: JointPanel(model: model)
+        case .actuatorControl: ActuatorPanel(model: model)
+        case .sceneTree: SceneTreePanel(model: model)
+        case .inspector: InspectorPanel(model: model)
+        case .mlInsights: MLInsightsPanel(model: model)
+        }
+    }
+
     // MARK: Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 7) {
-                KineticMark().frame(width: 15, height: 15)
-                Text("Kinetic")
-                    .font(Typo.title)
-                    .foregroundStyle(theme.text)
-            }
-
-            Rectangle().fill(theme.border).frame(width: 1, height: 18)
-
-            ToolbarButton(systemImage: model.isPlaying ? "pause.fill" : "play.fill",
-                          label: model.isPlaying ? "Pause" : "Play",
-                          isActive: model.isPlaying) { model.togglePlayback() }
-            ToolbarButton(systemImage: "forward.frame.fill") { model.stepOnce() }
-            ToolbarButton(systemImage: "arrow.counterclockwise") { model.reset() }
-
-            speedControl
-
-            Rectangle().fill(theme.border).frame(width: 1, height: 18)
-
-            ToolbarButton(systemImage: "viewfinder") { model.commands.frameScene() }
-            cameraPresets
-
-            Spacer(minLength: 8)
-
-            Button { model.showCommandPalette = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 10, weight: .medium))
-                    Text(model.sceneTitle)
-                        .font(Typo.small.weight(.medium))
-                    Text("⌘K")
-                        .font(Typo.monoSmall)
-                        .foregroundStyle(theme.tertiary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(theme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
+        GlassBar {
+            HStack(spacing: 10) {
+                HStack(spacing: 7) {
+                    KineticMark().frame(width: 15, height: 15)
+                    Text("Kinetic")
+                        .font(Typo.title)
+                        .foregroundStyle(theme.text)
                 }
-                .foregroundStyle(theme.secondary)
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .frame(minWidth: 240)
-                .overlay(RoundedRectangle(cornerRadius: Metric.radius)
-                    .stroke(theme.border, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
 
-            Spacer(minLength: 8)
+                Rectangle().fill(theme.border).frame(width: 1, height: 18)
 
-            ToolbarButton(systemImage: "folder") { openModel() }
-            ToolbarButton(systemImage: model.isRecording ? "stop.circle.fill" : "record.circle",
-                          isActive: model.isRecording,
-                          tone: model.isRecording ? nil : Palette.danger) {
-                model.isRecording ? model.stopRecording() : startRecording()
+                GlassButton(model.isPlaying ? "Pause" : "Play",
+                            systemImage: model.isPlaying ? "pause.fill" : "play.fill",
+                            isActive: model.isPlaying) { model.togglePlayback() }
+                GlassButton(systemImage: "forward.frame.fill") { model.stepOnce() }
+                GlassButton(systemImage: "arrow.counterclockwise") { model.reset() }
+
+                speedControl
+
+                Rectangle().fill(theme.border).frame(width: 1, height: 18)
+
+                GlassButton(systemImage: "viewfinder") { model.commands.frameScene() }
+                layoutMenu
+
+                Spacer(minLength: 8)
+
+                paletteButton
+
+                Spacer(minLength: 8)
+
+                FoxgloveSwitch(controller: foxglove)
+
+                GlassButton(systemImage: "folder") { openModel() }
+                GlassButton(systemImage: model.isRecording ? "stop.circle.fill" : "record.circle",
+                            isActive: model.isRecording) {
+                    model.isRecording ? model.stopRecording() : startRecording()
+                }
+                GlassButton(systemImage: model.isDark ? "moon.fill" : "sun.max.fill") {
+                    model.isDark.toggle()
+                    model.applyAppearance()
+                }
+                GlassButton(systemImage: "rectangle.bottomthird.inset.filled",
+                            isActive: timelineVisible) {
+                    timelineVisible.toggle()
+                }
             }
-            ToolbarButton(systemImage: "antenna.radiowaves.left.and.right",
-                          isActive: model.bridgeIsRunning) { model.toggleBridge() }
-            ToolbarButton(systemImage: model.isDark ? "moon.fill" : "sun.max.fill") {
-                model.isDark.toggle()
-                model.applyAppearance()
-            }
-            ToolbarButton(systemImage: "sidebar.left", isActive: model.showSidebar) {
-                model.showSidebar.toggle()
-            }
-            ToolbarButton(systemImage: "sidebar.right", isActive: model.showInspector) {
-                model.showInspector.toggle()
-            }
-            ToolbarButton(systemImage: "rectangle.bottomthird.inset.filled",
-                          isActive: model.showBottomPanel) {
-                model.showBottomPanel.toggle()
-            }
+            .padding(.horizontal, Metric.gutter)
         }
-        .padding(.horizontal, Metric.gutter)
         .frame(height: Metric.toolbarHeight)
-        .background(theme.background)
+    }
+
+    private var paletteButton: some View {
+        Button { model.showCommandPalette = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 10, weight: .medium))
+                Text(model.sceneTitle)
+                    .font(Typo.small.weight(.medium))
+                Text("⌘K")
+                    .font(Typo.monoSmall)
+                    .foregroundStyle(theme.tertiary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(theme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+            .foregroundStyle(theme.secondary)
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .frame(minWidth: 220)
+            .glassSurface(cornerRadius: Metric.radius)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var layoutMenu: some View {
+        Menu {
+            ForEach(PanelLayoutPreset.builtins, id: \.name) { preset in
+                Button(preset.name) { panels.apply(preset) }
+            }
+            Divider()
+            Button("Split Right") { panels.splitFocusedRight() }
+                .keyboardShortcut("\\", modifiers: .command)
+            Button("Split Down") { panels.splitFocusedDown() }
+                .keyboardShortcut("\\", modifiers: [.command, .shift])
+            Button("Close Panel") { panels.closeFocused() }
+                .disabled(!panels.canCloseFocusedPanel)
+            Divider()
+            Button("Reset Layout") { panels.resetToDefault() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "rectangle.split.2x2")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(panels.activePresetName ?? "Custom")
+                    .font(Typo.small.weight(.medium))
+            }
+            .foregroundStyle(theme.text)
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .glassSurface(cornerRadius: Metric.radius)
     }
 
     private var speedControl: some View {
-        HStack(spacing: 2) {
-            ForEach([0.1, 0.25, 1.0, 2.0], id: \.self) { scale in
-                Button { model.timeScale = scale } label: {
-                    Text(scale < 1 ? String(format: "%.2g×", scale) : "\(Int(scale))×")
-                        .font(Typo.monoSmall)
-                        .foregroundStyle(model.timeScale == scale ? .white : theme.secondary)
-                        .frame(width: 32, height: 22)
-                        .background(model.timeScale == scale ? theme.accent : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.plain)
-            }
+        GlassSegmentedControl([0.1, 0.25, 1.0, 2.0], selection: $model.timeScale) { scale in
+            scale < 1 ? String(format: "%.2g×", scale) : "\(Int(scale))×"
         }
-        .padding(2)
-        .overlay(RoundedRectangle(cornerRadius: Metric.radius).stroke(theme.border, lineWidth: 1))
-    }
-
-    private var cameraPresets: some View {
-        HStack(spacing: 2) {
-            ForEach(CameraPreset.allCases, id: \.self) { preset in
-                Button { model.commands.setCamera(preset) } label: {
-                    Text(preset.rawValue.prefix(3).uppercased())
-                        .font(Typo.monoSmall)
-                        .foregroundStyle(theme.secondary)
-                        .frame(width: 30, height: 22)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(2)
-        .overlay(RoundedRectangle(cornerRadius: Metric.radius).stroke(theme.border, lineWidth: 1))
     }
 
     // MARK: Viewport
@@ -240,6 +249,8 @@ struct ContentView: View {
                     onSelect: { model.selectedGeom = $0 },
                     onWillStep: { model.sample() })
                 .id(ObjectIdentifier(model.world))
+
+                MeasurementTool(model: model, state: measurement)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle").font(.system(size: 22))
@@ -249,151 +260,31 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            statOverlay
-            axisGizmo
-            if model.isScrubbing { scrubbingBanner }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+            ViewportHUD(model: model)
+                .padding(Metric.gutter)
 
-    private var statOverlay: some View {
-        HStack(spacing: 6) {
-            StatTile(label: "time", value: String(format: "%.2f", model.displayTime), unit: "s")
-            StatTile(label: "realtime", value: String(format: "%.2f", model.stats.realtimeFactor),
-                     unit: "×",
-                     tone: model.stats.realtimeFactor >= 0.95 ? Palette.success : Palette.warning)
-            StatTile(label: "step", value: String(format: "%.2f", model.stats.stepMilliseconds),
-                     unit: "ms")
-            StatTile(label: "contacts", value: "\(model.stats.contactCount)")
-            StatTile(label: "fps", value: String(format: "%.0f", model.stats.frameRate))
-        }
-        .frame(width: 560)
-        .padding(Metric.gutter)
-        .allowsHitTesting(false)
-    }
-
-    private var scrubbingBanner: some View {
-        VStack {
-            Spacer()
-            HStack(spacing: 8) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("Reviewing history — the simulation is paused")
-                    .font(Typo.small.weight(.medium))
-                Button("Jump to live") { model.resumeLive() }
-                    .buttonStyle(.plain)
-                    .font(Typo.small.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Palette.warning.opacity(0.35))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
-            .foregroundStyle(Palette.warning)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(theme.surface)
-            .overlay(RoundedRectangle(cornerRadius: Metric.radius)
-                .stroke(Palette.warning.opacity(0.4), lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: Metric.radius))
-            .padding(.bottom, Metric.gutter)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// Orientation reference in the corner; Kinetic is Z-up.
-    private var axisGizmo: some View {
-        VStack {
-            Spacer()
             HStack {
                 Spacer()
-                Canvas { context, size in
-                    let centre = CGPoint(x: size.width / 2, y: size.height / 2)
-                    let camera = model.commands.camera
-                    let azimuth = Double(camera?.azimuth ?? -0.9)
-                    let elevation = Double(camera?.elevation ?? 0.42)
-                    let length = min(size.width, size.height) * 0.36
-
-                    // Project each world axis through the camera's yaw/pitch.
-                    func project(_ v: (Double, Double, Double)) -> CGPoint {
-                        let x = v.0 * cos(-azimuth) - v.1 * sin(-azimuth)
-                        let y = v.0 * sin(-azimuth) + v.1 * cos(-azimuth)
-                        let screenX = x
-                        let screenY = -(v.2 * cos(elevation) - y * sin(elevation))
-                        return CGPoint(x: centre.x + screenX * length,
-                                       y: centre.y + screenY * length)
-                    }
-
-                    let axes: [((Double, Double, Double), Color, String)] = [
-                        ((1, 0, 0), Color(red: 0.94, green: 0.27, blue: 0.34), "X"),
-                        ((0, 1, 0), Color(red: 0.20, green: 0.80, blue: 0.45), "Y"),
-                        ((0, 0, 1), Color(red: 0.20, green: 0.55, blue: 1.00), "Z"),
-                    ]
-                    for (vector, color, label) in axes {
-                        let tip = project(vector)
-                        var path = Path()
-                        path.move(to: centre)
-                        path.addLine(to: tip)
-                        context.stroke(path, with: .color(color),
-                                       style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-                        context.fill(Path(ellipseIn: CGRect(x: tip.x - 5, y: tip.y - 5,
-                                                            width: 10, height: 10)),
-                                     with: .color(color))
-                        context.draw(Text(label).font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(.white), at: tip)
-                    }
+                VStack {
+                    Spacer()
+                    AxisGizmoView(model: model)
+                        .padding(Metric.gutter)
                 }
-                .frame(width: 74, height: 74)
-                .background(theme.surface.opacity(0.75))
-                .clipShape(Circle())
-                .overlay(Circle().stroke(theme.borderSubtle, lineWidth: 1))
-                .padding(Metric.gutter)
             }
-        }
-        .allowsHitTesting(false)
-    }
 
-    // MARK: Bottom panel
-
-    private var bottomPanel: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 2) {
-                ForEach(BottomTab.allCases, id: \.self) { tab in
-                    Button { bottomTab = tab } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: tab.systemImage).font(.system(size: 10))
-                            Text(tab.rawValue)
-                                .font(Typo.small.weight(bottomTab == tab ? .semibold : .regular))
-                        }
-                        .foregroundStyle(bottomTab == tab ? theme.text : theme.tertiary)
-                        .padding(.horizontal, 10)
-                        .frame(height: 24)
-                        .background(bottomTab == tab ? theme.surface : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                    .buttonStyle(.plain)
-                }
+            VStack {
                 Spacer()
-                if model.isRecording {
-                    HStack(spacing: 5) {
-                        Circle().fill(Palette.danger).frame(width: 6, height: 6)
-                        Text("recording · \(model.recordedFrames) frames")
-                            .font(Typo.monoSmall)
-                            .foregroundStyle(Palette.danger)
-                    }
+                HStack {
+                    ViewportToolbar(model: model)
+                        .padding(Metric.gutter)
+                    Spacer()
                 }
             }
-            .padding(.horizontal, Metric.gutter)
-            .padding(.top, 6)
 
-            switch bottomTab {
-            case .telemetry: TelemetryPanel(model: model)
-            case .joints: JointPanel(model: model)
-            case .actuators: ActuatorPanel(model: model)
-            case .log: ConsolePanel(model: model)
-            }
+            ScrubbingBanner(model: model)
+            SelectionCallout(model: model)
         }
-        .background(theme.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Status bar
@@ -417,14 +308,8 @@ struct ContentView: View {
 
             Spacer()
 
-            if model.bridgeIsRunning {
-                HStack(spacing: 5) {
-                    Circle().fill(Palette.success).frame(width: 5, height: 5)
-                    Text("ws://localhost:\(model.bridgePort) · \(model.bridgeConnections) client\(model.bridgeConnections == 1 ? "" : "s")")
-                        .font(Typo.monoSmall)
-                        .foregroundStyle(Palette.success)
-                }
-            }
+            FoxgloveStatusStrip(controller: foxglove)
+
             Text(String(format: "%.0f fps · %d instances", model.stats.frameRate,
                         model.stats.instanceCount))
                 .font(Typo.monoSmall)
@@ -436,6 +321,9 @@ struct ContentView: View {
         .padding(.horizontal, Metric.gutter)
         .frame(height: 24)
         .background(theme.background)
+        .onChange(of: model.bridgeConnections) { _, count in
+            foxglove.updateServerConnections(count)
+        }
     }
 
     // MARK: Actions
@@ -462,52 +350,6 @@ struct ContentView: View {
         if panel.runModal() == .OK, let url = panel.url {
             model.startRecording(to: url)
         }
-    }
-}
-
-/// Draggable splitter between panes.
-struct ResizeHandle: View {
-    enum Axis { case horizontal, vertical }
-
-    @Environment(\.studioTheme) private var theme
-    let axis: Axis
-    let onDrag: (CGFloat) -> Void
-
-    @State private var hovering = false
-
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(hovering ? theme.accent.opacity(0.6) : theme.border)
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: axis == .horizontal ? 9 : nil,
-                       height: axis == .vertical ? 9 : nil)
-                .contentShape(Rectangle())
-        }
-        .frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
-        .overlay(
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: axis == .horizontal ? 9 : nil,
-                       height: axis == .vertical ? 9 : nil)
-                .contentShape(Rectangle())
-                .onHover { inside in
-                    hovering = inside
-                    if inside {
-                        (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown)
-                            .push()
-                    } else {
-                        NSCursor.pop()
-                    }
-                }
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            onDrag(axis == .horizontal ? value.translation.width
-                                                       : value.translation.height)
-                        })
-        )
     }
 }
 

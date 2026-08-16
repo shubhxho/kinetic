@@ -38,6 +38,23 @@ for bundle in "$BUILD_DIR"/*.bundle; do
   cp -R "$bundle" "$APP/Contents/Resources/"
 done
 
+# MLX ships its GPU kernels as Metal sources compiled by Xcode's build rule.
+# `swift build` has no Metal compilation step, so a command-line build produces
+# no metallib and MLX falls back to reporting the accelerator unavailable — the
+# analytic controller, the phrase parser and the statistical detector all still
+# work, only the neural paths are disabled. If an Xcode build of mlx-swift is
+# present anywhere in DerivedData, stage its bundle so the app gets the GPU.
+MLX_BUNDLE="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+  -name "mlx-swift_Cmlx.bundle" -maxdepth 6 2>/dev/null | head -1)"
+if [[ -n "$MLX_BUNDLE" ]]; then
+  cp -R "$MLX_BUNDLE" "$APP/Contents/MacOS/"
+  cp -R "$MLX_BUNDLE" "$APP/Contents/Resources/"
+  echo "  staged MLX Metal kernels from $(basename "$(dirname "$MLX_BUNDLE")")"
+else
+  echo "  note: no MLX metallib found — neural features will report the GPU unavailable"
+  echo "        (build mlx-swift once in Xcode, or open this package in Xcode, to enable them)"
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

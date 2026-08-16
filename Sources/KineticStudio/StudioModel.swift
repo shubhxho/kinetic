@@ -138,6 +138,11 @@ final class StudioModel: ObservableObject {
     @Published var showSidebar = true
     @Published var showBottomPanel = true
     @Published var plotWindowSeconds: Double = 8
+    /// Bumped whenever the world's state is discontinuous — a reset or a new
+    /// model. Panels that hold a baseline (energy drift, sparklines) rebase on a
+    /// change rather than trying to infer one from a time discontinuity, which
+    /// a scrub also produces.
+    @Published private(set) var resetGeneration = 0
     @Published var isScrubbing = false
     @Published var scrubIndex = 0
     @Published var showCommandPalette = false
@@ -223,6 +228,7 @@ final class StudioModel: ObservableObject {
         rebuildChannels()
         applyDefaultPlots()
         history.configure(for: newWorld)
+        resetGeneration += 1
         isScrubbing = false
         scrubIndex = 0
         if let bridge, bridge.isRunning {
@@ -234,6 +240,7 @@ final class StudioModel: ObservableObject {
 
     func reset() {
         world.reset()
+        resetGeneration += 1
         for index in series.indices { series[index].clear() }
         history.clear()
         isScrubbing = false

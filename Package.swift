@@ -6,10 +6,16 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "Kinetic", targets: ["Kinetic"]),
+        .library(name: "KineticML", targets: ["KineticML"]),
         .library(name: "KineticRender", targets: ["KineticRender"]),
         .library(name: "KineticBridge", targets: ["KineticBridge"]),
         .executable(name: "kinetic", targets: ["KineticCLI"]),
         .executable(name: "KineticStudio", targets: ["KineticStudio"]),
+    ],
+    dependencies: [
+        // MLX gives Kinetic on-device training and inference on the same GPU the
+        // viewport is already using, with no Python runtime in the loop.
+        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.31.0"),
     ],
     targets: [
         // ── C++20 physics core ────────────────────────────────────────────
@@ -39,6 +45,19 @@ let package = Package(
             resources: [.copy("Resources/Shaders")]
         ),
 
+        // ── On-device machine learning ────────────────────────────────────
+        .target(
+            name: "KineticML",
+            dependencies: [
+                "Kinetic",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXOptimizers", package: "mlx-swift"),
+                .product(name: "MLXRandom", package: "mlx-swift"),
+            ],
+            path: "Sources/KineticML"
+        ),
+
         // ── Telemetry / Foxglove-compatible bridge ────────────────────────
         .target(
             name: "KineticBridge",
@@ -49,12 +68,12 @@ let package = Package(
         // ── Apps ──────────────────────────────────────────────────────────
         .executableTarget(
             name: "KineticCLI",
-            dependencies: ["Kinetic", "KineticRender", "KineticBridge"],
+            dependencies: ["Kinetic", "KineticRender", "KineticBridge", "KineticML"],
             path: "Sources/KineticCLI"
         ),
         .executableTarget(
             name: "KineticStudio",
-            dependencies: ["Kinetic", "KineticRender", "KineticBridge"],
+            dependencies: ["Kinetic", "KineticRender", "KineticBridge", "KineticML"],
             path: "Sources/KineticStudio",
             resources: [.copy("Resources")]
         ),
@@ -62,7 +81,7 @@ let package = Package(
         // ── Tests ─────────────────────────────────────────────────────────
         .testTarget(
             name: "KineticTests",
-            dependencies: ["Kinetic", "KineticBridge"],
+            dependencies: ["Kinetic", "KineticBridge", "KineticML"],
             path: "Tests/KineticTests",
             resources: [.copy("Fixtures")]
         ),
