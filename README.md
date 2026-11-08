@@ -269,11 +269,23 @@ enough to describe the shape.
 ```bash
 brew install mdbook   # or the v0.5.4 binary used by CI
 mdbook serve docs --open
+# same build GitHub Pages and Vercel run:
+./Scripts/build-docs.sh
 ```
 
 The book covers install, Studio, conventions, the algorithms with equations, a
 cookbook, ML, the model library, file formats, the wire protocol, both API
 surfaces, benchmarks, comparisons, troubleshooting and a glossary.
+
+Two static hosts, same `docs/book` output:
+
+| Host | When it publishes | URL |
+| --- | --- | --- |
+| GitHub Pages | push to `main` (`.github/workflows/docs.yml`) | https://shubhxho.github.io/kinetic |
+| Vercel | import this repo, or a `VERCEL_TOKEN` on the Vercel workflow | project URL after the first deploy |
+
+The simulator itself is a macOS app and is not deployed. `vercel.json` builds
+only the book. Hobby is enough; this repo does not attach a paid Vercel plan.
 
 ## License
 

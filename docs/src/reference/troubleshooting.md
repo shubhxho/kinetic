@@ -106,6 +106,13 @@ They should not. If they do:
 - File a bug with the scene — this is a real defect, and `kinetic validate`
   checks it on every run.
 
+## The Vercel deploy is missing or the GitHub Action skipped
+
+The Vercel workflow is silent when `VERCEL_TOKEN` is unset, on purpose, so the
+rest of CI still goes green. Import the GitHub repo at vercel.com (Hobby), or
+add the token as a repository secret. `vercel.json` already names the build
+command and `docs/book` as the output. The macOS app is not what Vercel hosts.
+
 ## `swift build` dies on mlx-swift / swift-tools-version
 
 The Kinetic package itself is `swift-tools-version: 6.0`. The pinned

@@ -6,3 +6,5 @@ DerivedData/
 dist/
 *.app/
 docs/book/
+.docs-tools/
+.vercel/

@@ -115,3 +115,19 @@ resource bundles, optionally copies an MLX metallib from DerivedData, writes
 signature and it is not notarised.
 
 `dist/` is gitignored.
+
+## Hosting the book (Vercel)
+
+The book is static files. Vercel hosts those files; it does not run Studio or
+the CLI.
+
+| Secret | Required | Where |
+| --- | --- | --- |
+| `VERCEL_TOKEN` | for the GitHub Action only | GitHub repo secret, from Vercel → Settings → Tokens |
+| `VERCEL_ORG_ID` | no | Vercel project settings, if you pin a project |
+| `VERCEL_PROJECT_ID` | no | same |
+
+Importing the GitHub repo in the Vercel dashboard does not need those secrets:
+Vercel builds from `vercel.json` on each push to the linked branch. Hobby is
+enough. Do not commit `.vercel/` or a real token. A dummy
+`VERCEL_TOKEN=vercel_example_not_a_real_token` is the documented shape.

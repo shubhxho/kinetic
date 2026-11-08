@@ -115,6 +115,9 @@ PNGs. Do not invent screenshots of Studio; this tree has none.
 After editing the book:
 
 ```bash
-mdbook build docs
-python3 docs/check-links.py docs/book
+./Scripts/build-docs.sh
 ```
+
+That is the same command GitHub Pages and Vercel run. `vercel.json` points at
+it; `.github/workflows/vercel.yml` publishes `docs/book` when `VERCEL_TOKEN`
+is set. The Swift app is not a Vercel project.

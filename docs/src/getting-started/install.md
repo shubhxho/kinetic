@@ -128,8 +128,32 @@ brew install mdbook
 mdbook serve docs --open
 ```
 
-CI installs the v0.5.4 Linux binary from the mdBook releases page and then
-runs `mdbook build docs` plus `python3 docs/check-links.py docs/book`.
+CI and Vercel both run `./Scripts/build-docs.sh`, which installs mdBook v0.5.4
+if needed, builds the book, and checks internal links.
+
+## Host the book
+
+The simulator stays on the Mac. The book is static HTML and can live in two
+places at once:
+
+**GitHub Pages** already publishes from `main` to
+https://shubhxho.github.io/kinetic.
+
+**Vercel** (Hobby is enough; no paid plan is required):
+
+1. On [vercel.com/new](https://vercel.com/new), import `shubhxho/kinetic`.
+2. Leave the preset as Other. `vercel.json` sets the build command to
+   `./Scripts/build-docs.sh` and the output directory to `docs/book`.
+3. Deploy. The site is the book at the domain root, not under `/kinetic/`.
+
+Alternatively set a repository secret `VERCEL_TOKEN` (Vercel → Settings →
+Tokens). `.github/workflows/vercel.yml` then deploys `docs/book` to a project
+named `kinetic-docs`. Optional: `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` to pin
+an existing project. The workflow is a no-op when the token is unset, so it
+does not fail CI.
+
+Do not put a Vercel token in the tree. A dummy
+`VERCEL_TOKEN=vercel_example_not_a_real_token` is enough to describe the shape.
 
 ## Configuration
 

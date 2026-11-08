@@ -1,0 +1,55 @@
+name: Vercel
+
+# Hosts the mdBook at a Vercel URL. GitHub Pages remains the default public
+# site (see docs.yml). This workflow is a no-op until VERCEL_TOKEN is set:
+# missing secrets must not fail the rest of CI.
+#
+# One secret is enough: a Vercel Hobby token. The first successful run creates
+# the project `kinetic-docs`. Optional: VERCEL_ORG_ID / VERCEL_PROJECT_ID to
+# pin an existing project instead.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.VERCEL_TOKEN != '' }}
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the book
+        run: ./Scripts/build-docs.sh
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@65.12.1
+
+      - name: Deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          extra=()
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            extra+=(--prod)
+          fi
+          if [[ -n "${VERCEL_ORG_ID}" && -n "${VERCEL_PROJECT_ID}" ]]; then
+            extra+=(--scope "${VERCEL_ORG_ID}")
+          fi
+          vercel deploy docs/book \
+            --token "$VERCEL_TOKEN" \
+            --yes \
+            --project kinetic-docs \
+            --create-if-missing \
+            "${extra[@]}"
