@@ -102,6 +102,10 @@ and which layer supplied it (`--flag`, `KINETIC_*`, or `default`).
 `--serial` on `run` and `serve` is the same knob as `kinetic bench --serial`:
 it sets `world.options.multithreaded = false`.
 
+An invalid flag value (`--seconds 0`, `--port abc`, `--duration -1`) exits
+non-zero. An invalid environment value is ignored and the compiled default
+wins. `KINETIC_SERIAL` is presence-based: an empty value still means serial.
+
 `kinetic models` subcommands: `list`, `info`, `fetch`, `validate`, `cache`,
 `purge`. See [The `kinetic` CLI](./cli.md).
 

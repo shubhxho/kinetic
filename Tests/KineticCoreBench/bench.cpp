@@ -11,6 +11,7 @@
 
 #include "kinetic.h"
 
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -690,11 +691,23 @@ void usage() {
     std::printf("  --seconds / KINETIC_BENCH_SECONDS   simulated seconds (default 1)\n");
     std::printf("  --serial  / KINETIC_SERIAL          single-threaded narrowphase\n");
     std::printf("  --config                            print resolved knobs and exit\n");
+    std::printf("  invalid --seconds exits 2; invalid KINETIC_BENCH_SECONDS is ignored\n");
 }
 
 const char *env_nonempty(const char *name) {
     const char *value = std::getenv(name);
     return (value && value[0] != '\0') ? value : nullptr;
+}
+
+bool parse_positive_seconds(const char *text, double *out) {
+    if (!text || !text[0] || !out) return false;
+    errno = 0;
+    char *end = nullptr;
+    double value = std::strtod(text, &end);
+    if (errno != 0 || end == text || *end != '\0') return false;
+    if (!std::isfinite(value) || value <= 0) return false;
+    *out = value;
+    return true;
 }
 
 void print_config(double seconds, const char *seconds_src,
@@ -723,10 +736,13 @@ int main(int argc, char **argv) {
     std::vector<std::string> ids;
 
     if (const char *env_seconds = env_nonempty("KINETIC_BENCH_SECONDS")) {
-        double value = std::atof(env_seconds);
-        if (value > 0) {
+        double value = 0;
+        if (parse_positive_seconds(env_seconds, &value)) {
             seconds = value;
             seconds_src = "KINETIC_BENCH_SECONDS";
+        } else {
+            std::fprintf(stderr, "warning: ignoring invalid KINETIC_BENCH_SECONDS='%s'\n",
+                         env_seconds);
         }
     }
     if (std::getenv("KINETIC_SERIAL") != nullptr) {
@@ -736,9 +752,20 @@ int main(int argc, char **argv) {
 
     for (int i = 1; i < argc; ++i) {
         const char *a = argv[i];
-        if (std::strcmp(a, "--seconds") == 0 && i + 1 < argc) {
-            seconds = std::atof(argv[++i]);
-            if (seconds <= 0) seconds = 1.0;
+        if (std::strcmp(a, "--seconds") == 0) {
+            if (i + 1 >= argc || std::strncmp(argv[i + 1], "--", 2) == 0) {
+                std::fprintf(stderr, "error: --seconds needs a positive number\n");
+                usage();
+                return 2;
+            }
+            double value = 0;
+            const char *text = argv[++i];
+            if (!parse_positive_seconds(text, &value)) {
+                std::fprintf(stderr, "error: invalid --seconds '%s'\n", text);
+                usage();
+                return 2;
+            }
+            seconds = value;
             seconds_src = "--seconds";
         } else if (std::strcmp(a, "--serial") == 0) {
             threaded = false;

@@ -118,13 +118,16 @@ struct ResolvedCLI {
     var benchSeconds: Double
     var benchSecondsSource: String
 
-    static func from(_ arguments: Arguments) -> ResolvedCLI {
+    static func from(_ arguments: Arguments) throws -> ResolvedCLI {
         let duration: Double
         let durationSource: String
-        if let value = arguments.double("duration") {
+        if arguments.has("duration") {
+            guard let value = arguments.double("duration"), value > 0, value.isFinite else {
+                throw CLIError.message("invalid --duration (need a positive number of seconds)")
+            }
             duration = value
             durationSource = "--duration"
-        } else if let value = CLIEnv.double("KINETIC_DURATION") {
+        } else if let value = CLIEnv.double("KINETIC_DURATION"), value > 0, value.isFinite {
             duration = value
             durationSource = "KINETIC_DURATION"
         } else {
@@ -134,7 +137,10 @@ struct ResolvedCLI {
 
         let port: UInt16
         let portSource: String
-        if let value = arguments.int("port"), (1..<65536).contains(value) {
+        if arguments.has("port") {
+            guard let value = arguments.int("port"), (1..<65536).contains(value) else {
+                throw CLIError.message("invalid --port (need an integer 1-65535)")
+            }
             port = UInt16(value)
             portSource = "--port"
         } else if let value = CLIEnv.int("KINETIC_PORT"), (1..<65536).contains(value) {
@@ -147,10 +153,13 @@ struct ResolvedCLI {
 
         let rate: Double
         let rateSource: String
-        if let value = arguments.double("rate"), value > 0 {
+        if arguments.has("rate") {
+            guard let value = arguments.double("rate"), value > 0, value.isFinite else {
+                throw CLIError.message("invalid --rate (need a positive Hz)")
+            }
             rate = value
             rateSource = "--rate"
-        } else if let value = CLIEnv.double("KINETIC_RATE"), value > 0 {
+        } else if let value = CLIEnv.double("KINETIC_RATE"), value > 0, value.isFinite {
             rate = value
             rateSource = "KINETIC_RATE"
         } else {
@@ -173,10 +182,13 @@ struct ResolvedCLI {
 
         let benchSeconds: Double
         let benchSecondsSource: String
-        if let value = arguments.double("seconds"), value > 0 {
+        if arguments.has("seconds") {
+            guard let value = arguments.double("seconds"), value > 0, value.isFinite else {
+                throw CLIError.message("invalid --seconds (need a positive number of seconds)")
+            }
             benchSeconds = value
             benchSecondsSource = "--seconds"
-        } else if let value = CLIEnv.double("KINETIC_BENCH_SECONDS"), value > 0 {
+        } else if let value = CLIEnv.double("KINETIC_BENCH_SECONDS"), value > 0, value.isFinite {
             benchSeconds = value
             benchSecondsSource = "KINETIC_BENCH_SECONDS"
         } else {
@@ -198,8 +210,8 @@ struct ResolvedCLI {
     }
 }
 
-func commandConfig(_ arguments: Arguments) {
-    let resolved = ResolvedCLI.from(arguments)
+func commandConfig(_ arguments: Arguments) throws {
+    let resolved = try ResolvedCLI.from(arguments)
     let tokenSet = CLIEnv.present("GITHUB_TOKEN")
     print(Term.bold("kinetic configuration"))
     print(Term.dim("  flag > environment > compiled default. GITHUB_TOKEN is shown as set/unset."))
@@ -314,7 +326,7 @@ func commandRun(_ arguments: Arguments) throws {
         throw CLIError.message("usage: kinetic run <scene|file> [--duration s] [--record out.kinlog] [--serve] [--port 8765] [--rate 30] [--serial]")
     }
     let world = try loadWorld(target)
-    let cfg = ResolvedCLI.from(arguments)
+    let cfg = try ResolvedCLI.from(arguments)
     cfg.applySimulation(to: world)
     let duration = cfg.duration
     let steps = arguments.int("steps") ?? Int(duration / world.options.timestep)
@@ -391,7 +403,7 @@ func commandRun(_ arguments: Arguments) throws {
 }
 
 func commandBench(_ arguments: Arguments) throws {
-    let cfg = ResolvedCLI.from(arguments)
+    let cfg = try ResolvedCLI.from(arguments)
     let seconds = cfg.benchSeconds
     let targets = arguments.positional.isEmpty
         ? SceneLibrary.all.map(\.id)
@@ -681,7 +693,7 @@ func commandReplay(_ arguments: Arguments) throws {
 func commandServe(_ arguments: Arguments) throws {
     let target = arguments.positional.first ?? "arm"
     let world = try loadWorld(target)
-    let cfg = ResolvedCLI.from(arguments)
+    let cfg = try ResolvedCLI.from(arguments)
     cfg.applySimulation(to: world)
     let port = cfg.port
     let bridge = FoxgloveBridge(world: world)
@@ -936,7 +948,7 @@ do {
         case "replay", "log": try commandReplay(arguments)
         case "serve": try commandServe(arguments)
         case "models", "model": try commandModels(arguments)
-        case "config": commandConfig(arguments)
+        case "config": try commandConfig(arguments)
         default: commandHelp()
         }
     }
