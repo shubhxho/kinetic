@@ -1,0 +1,14 @@
+# The book is built from docs/. Everything else is the simulator, not the site.
+Sources
+Tests
+.build
+.swiftpm
+DerivedData
+dist
+.git
+docs/book
+.docs-tools
+Package.swift
+Package.resolved
+*.xcodeproj
+*.xcworkspace

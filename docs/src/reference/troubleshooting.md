@@ -106,6 +106,43 @@ They should not. If they do:
 - File a bug with the scene — this is a real defect, and `kinetic validate`
   checks it on every run.
 
+## The Vercel deploy is missing or the GitHub Action skipped
+
+The Vercel workflow is silent when `VERCEL_TOKEN` is unset, on purpose, so the
+rest of CI still goes green. Import the GitHub repo at vercel.com (Hobby), or
+add the token as a repository secret. `vercel.json` already names the build
+command and `docs/book` as the output. The macOS app is not what Vercel hosts.
+
+## `swift build` dies on mlx-swift / swift-tools-version
+
+The Kinetic package itself is `swift-tools-version: 6.0`. The pinned
+`mlx-swift` 0.31.x package is `6.3`. A Swift 6.1 toolchain (typical of an
+older Xcode 16 / macOS 15 image) refuses to parse that manifest.
+
+Use a Swift 6.3 toolchain. CI uses `macos-26` and selects the newest Xcode
+under `/Applications`. `swift --version` is the check.
+
+## `kinetic models fetch` returns 403 or 429
+
+Anonymous GitHub API traffic is 60 requests an hour. Export `GITHUB_TOKEN`
+(a PAT, not a password) in the shell. Do not write it into the repository.
+See [Configuration](../getting-started/configuration.md).
+
+## Building on Linux
+
+The CLI, renderer and Studio do not build on Linux: they import AppKit, Metal
+and SwiftUI. There is no Linux product.
+
+The physics core does. CI compiles it with g++ on `ubuntu-latest`:
+
+```bash
+./Scripts/bench-core.sh --check --seconds 1
+```
+
+That is a KineticCore gate, not a substitute for `swift test`. Absolute
+ms/step on that guest is not the M4 table; see
+[Benchmarks](./benchmarks.md).
+
 ## Studio will not launch
 
 ```bash

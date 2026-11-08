@@ -83,19 +83,85 @@ a grid pass and a resolve.
 At 120 Hz the frame budget is 8.3 ms, so the viewport is not the constraint for
 any scene here.
 
+## Tests
+
+Two gates share the `SceneLibrary` geometries and the same warmup-then-time
+protocol as `kinetic bench`. Neither asserts the M4 milliseconds-per-step
+table above.
+
+| Gate | Runs on | What it asserts |
+| --- | --- | --- |
+| `Tests/KineticTests/BenchmarkTests.swift` | macOS, `swift test` | published nv/geoms; finite timed runs; contact-free vs contact-rich; articulated scenes cheaper than piles; serial vs threaded bit-identity; profile stages; stack still stacked |
+| `./Scripts/bench-core.sh --check` | any OS with g++ or `$CXX` | the same invariants through `kinetic.h`, plus `kinetic validate`'s stack / determinism / threaded-narrowphase checks |
+
+CI runs both: `swift test` on `macos-26`, `bench-core.sh --check --seconds 1`
+on `ubuntu-latest`.
+
+## Linux KineticCore (this checkout)
+
+Verified here, not on the M4. `g++ 13.3.0 -O2`, Linux x86_64, 4 cores, Kinetic
+1.0.0, 2.0 s of simulated time per scene, 50-step warmup, threaded
+narrowphase. The harness rebuilds each scene through `kinetic.h`; nv and geom
+counts match the table above. Absolute ms/step is a different ISA and a
+different compiler, so it is **not** comparable to the M4 column.
+
+```bash
+./Scripts/bench-core.sh --check --seconds 1
+./.build/kinetic-core-bench --seconds 2
+```
+
+`--check` reported 41 passes, including stack stability (max drift 4.85 mm),
+168-coordinate determinism, and 420-coordinate threaded-narrowphase
+bit-identity.
+
+| Scene | nv | geoms | ms/step | steps/s | realtime | contacts |
+| --- | --- | --- | --- | --- | --- | --- |
+| cartpole | 2 | 3 | 0.0011 | 941,508 | 1883× | 0 |
+| arm | 6 | 8 | 0.0026 | 379,471 | 759× | 0 |
+| chain | 20 | 21 | 0.0073 | 137,653 | 275× | 0 |
+| quadruped | 18 | 18 | 0.0202 | 49,608 | 99× | 4 |
+| stack | 60 | 11 | 0.0994 | 10,058 | 20× | 40 |
+| mixed | 144 | 25 | 0.1942 | 5,150 | 10× | 58 |
+| dominoes | 360 | 61 | 0.4831 | 2,070 | 4.1× | 282 |
+
+Serial vs threaded on the same guest, 2.0 s simulated:
+
+| Scene | serial | threaded | speed-up |
+| --- | --- | --- | --- |
+| mixed | 0.2848 | 0.1942 | 1.47× |
+| stack | 0.1002 | 0.0994 | 1.01× |
+| quadruped | 0.0202 | 0.0202 | 1.00× |
+| dominoes | 0.4640 | 0.4831 | 0.96× |
+
+Threading helps the mixed pile, where collision is a larger share of the step.
+On this 4-core guest the other scenes are inside the noise, and dominoes is
+slightly slower threaded. Both paths stayed bit-identical.
+
+`swift test` / `kinetic bench` were **not** run here: this environment has no
+Swift toolchain and no Metal.
+
 ## Methodology and honesty
 
 - Single machine, single configuration. Numbers on Intel Macs will differ.
+- The Linux table is a second machine, not a rerun of the first.
 - Double precision throughout the dynamics. Switching to float would be faster
   and is not offered, because determinism and energy behaviour matter more.
 - These are **single-world** numbers. Kinetic does not vectorise across parallel
   environments. If you need thousands of environments stepping together, use a
   GPU-batched simulator; see [How Kinetic compares](./comparison.md).
 
-Reproduce everything here with:
+Reproduce the M4 table with:
 
 ```bash
 swift build -c release
 ./.build/release/kinetic bench --seconds 5
 ./.build/release/kinetic bench --serial --seconds 5
+```
+
+Reproduce the Linux KineticCore table with:
+
+```bash
+./Scripts/bench-core.sh --check --seconds 1
+./.build/kinetic-core-bench --seconds 2
+./.build/kinetic-core-bench --serial --seconds 2
 ```

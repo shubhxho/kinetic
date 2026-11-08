@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" role="img" aria-labelledby="title desc">
+  <title id="title">Kinetic data flow</title>
+  <desc id="desc">Controllers write control and options into World. step() runs kinematics, inertia, collision and the solver, then state fans out to the renderer, recordings, Foxglove and ML insight.</desc>
+  <rect width="960" height="620" fill="#0a0a0a"/>
+  <text x="28" y="36" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="600">A step, and where the state goes</text>
+  <text x="28" y="56" fill="#8a8a8a" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">One World owns qpos, qvel, ctrl and contacts. Everything else is a reader or a writer of those buffers.</text>
+
+  <rect x="20" y="84" width="200" height="200" rx="10" fill="#111111" stroke="#2a2a2a"/>
+  <text x="36" y="110" fill="#8a8a8a" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" font-weight="600" letter-spacing="0.08em">WRITE</text>
+  <text x="36" y="134" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600">Controllers</text>
+  <text x="36" y="156" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">world.control[]</text>
+  <text x="36" y="174" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">applyForce / torque</text>
+  <text x="36" y="206" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600">Foxglove client</text>
+  <text x="36" y="226" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">publish ctrl back</text>
+  <text x="36" y="258" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600">Studio joints</text>
+  <text x="36" y="276" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">write qpos, forward()</text>
+
+  <rect x="260" y="84" width="440" height="200" rx="10" fill="#071833" stroke="#0070f3"/>
+  <text x="280" y="110" fill="#4da3ff" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" font-weight="600" letter-spacing="0.08em">WORLD.STEP()</text>
+  <text x="280" y="134" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600">KineticCore pipeline</text>
+
+  <rect x="280" y="150" width="96" height="44" rx="6" fill="#0a0a0a" stroke="#1e4d8c"/>
+  <text x="292" y="168" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9">1-2</text>
+  <text x="292" y="184" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11">FK + CRBA</text>
+
+  <rect x="388" y="150" width="96" height="44" rx="6" fill="#0a0a0a" stroke="#1e4d8c"/>
+  <text x="400" y="168" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9">3-6</text>
+  <text x="400" y="184" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11">RNEA, a_free</text>
+
+  <rect x="496" y="150" width="84" height="44" rx="6" fill="#0a0a0a" stroke="#0070f3"/>
+  <text x="508" y="168" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9">7</text>
+  <text x="508" y="184" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11">collide</text>
+
+  <rect x="592" y="150" width="84" height="44" rx="6" fill="#0a0a0a" stroke="#0070f3"/>
+  <text x="604" y="168" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9">8-9</text>
+  <text x="604" y="184" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11">PGS solve</text>
+
+  <rect x="280" y="210" width="396" height="44" rx="6" fill="#0a0a0a" stroke="#2a2a2a"/>
+  <text x="292" y="228" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9">10</text>
+  <text x="292" y="244" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">integrate on the manifold, then sensors and profile</text>
+
+  <rect x="740" y="84" width="200" height="200" rx="10" fill="#111111" stroke="#2a2a2a"/>
+  <text x="756" y="110" fill="#8a8a8a" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" font-weight="600" letter-spacing="0.08em">READ</text>
+  <text x="756" y="134" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600">KineticRender</text>
+  <text x="756" y="152" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">viewport / PNG</text>
+  <text x="756" y="180" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600">.kinlog</text>
+  <text x="756" y="198" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">seekable recording</text>
+  <text x="756" y="226" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600">Foxglove server</text>
+  <text x="756" y="244" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">ws://localhost:8765</text>
+  <text x="756" y="270" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600">KineticML insight</text>
+
+  <line x1="220" y1="184" x2="260" y2="184" stroke="#0070f3" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="700" y1="184" x2="740" y2="184" stroke="#0070f3" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#0070f3"/>
+    </marker>
+  </defs>
+
+  <text x="28" y="322" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600">Getting a robot into the world</text>
+
+  <rect x="20" y="344" width="170" height="72" rx="10" fill="#111111" stroke="#2a2a2a"/>
+  <text x="36" y="374" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600">SceneLibrary</text>
+  <text x="36" y="394" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">stack, arm, quadruped</text>
+
+  <rect x="210" y="344" width="170" height="72" rx="10" fill="#111111" stroke="#2a2a2a"/>
+  <text x="226" y="374" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600">URDF / MJCF</text>
+  <text x="226" y="394" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">CLI, Open, API</text>
+
+  <rect x="400" y="344" width="170" height="72" rx="10" fill="#111111" stroke="#2a2a2a"/>
+  <text x="416" y="374" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600">Model library</text>
+  <text x="416" y="394" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">fetch cache, not vendored</text>
+
+  <rect x="590" y="344" width="170" height="72" rx="10" fill="#111111" stroke="#2a2a2a"/>
+  <text x="606" y="374" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600">USD</text>
+  <text x="606" y="394" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">Swift API only</text>
+
+  <rect x="780" y="344" width="160" height="72" rx="10" fill="#111111" stroke="#2a2a2a"/>
+  <text x="796" y="374" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600">World builder</text>
+  <text x="796" y="394" fill="#8a8a8a" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11">then compile()</text>
+
+  <line x1="190" y1="380" x2="210" y2="380" stroke="#3a3a3a"/>
+  <line x1="380" y1="380" x2="400" y2="380" stroke="#3a3a3a"/>
+  <line x1="570" y1="380" x2="590" y2="380" stroke="#3a3a3a"/>
+  <line x1="760" y1="380" x2="780" y2="380" stroke="#3a3a3a"/>
+
+  <text x="28" y="456" fill="#ededed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600">Ports and paths that actually exist</text>
+  <text x="28" y="482" fill="#b0b0b0" font-family="ui-monospace, SFMono-Regular, monospace" font-size="12">ws://localhost:8765     Foxglove WebSocket (CLI --port, Studio Settings)</text>
+  <text x="28" y="504" fill="#b0b0b0" font-family="ui-monospace, SFMono-Regular, monospace" font-size="12">~/Library/Application Support/Kinetic/Models/     model cache</text>
+  <text x="28" y="526" fill="#b0b0b0" font-family="ui-monospace, SFMono-Regular, monospace" font-size="12">GITHUB_TOKEN            optional, raises GitHub API rate limits on fetch</text>
+  <text x="28" y="548" fill="#b0b0b0" font-family="ui-monospace, SFMono-Regular, monospace" font-size="12">dist/Kinetic Studio.app  produced by Scripts/bundle-app.sh, not swift build</text>
+  <text x="28" y="580" fill="#666666" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11">USD loads through the Swift API. The CLI and Studio Open dialog accept URDF and MJCF.</text>
+</svg>

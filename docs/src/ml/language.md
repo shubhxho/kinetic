@@ -67,8 +67,12 @@ rough — map onto real `SurfaceMaterial` values.
 Garbage returns nil: `asdkjh qwe zzz`, `!!!???`, empty, `-`.
 
 Partial garbage returns a low-confidence plan with the leftovers listed:
-`drop -5 boxes from -2 m` parses at 67%, `add 99999 boxes` at 82%, and the panel
-shows exactly which words meant nothing.
+`drop -5 boxes from -2 m` parses at 67%, `add 99999 boxes` at 82%, and the
+parse result names exactly which words meant nothing.
+
+An `AskKinetic` SwiftUI view exists in `Sources/KineticStudio/` but is not
+registered in `PanelKind`. Call `IntentParser` from code, or type into that
+view if you embed it yourself.
 
 Confidence is capped below 1 on purpose. Matching every word is not
 understanding, and a parser that claims certainty is lying.

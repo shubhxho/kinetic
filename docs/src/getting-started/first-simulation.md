@@ -100,15 +100,20 @@ visual geometry keeps its original triangles. See [Meshes](../formats/meshes.md)
 Three ways, in increasing order of interactivity:
 
 ```bash
-# 1. render one frame, headless
+# 1. render one frame, headless (Metal required)
 kinetic render stack --steps 400 --out stack.png
 
 # 2. stream it to Foxglove or Studio
 kinetic serve arm --port 8765
 
-# 3. open the app
+# 3. open the app (after Scripts/bundle-app.sh release)
 open "dist/Kinetic Studio.app"
 ```
+
+`kinetic render` and Studio both need a Metal device. `kinetic run`,
+`validate`, `bench` and `info` do not. USD files are not accepted by the CLI;
+use `USDImporter` from Swift. See
+[Configuration](./configuration.md) for ports, cache and `GITHUB_TOKEN`.
 
 ## Reading results out
 

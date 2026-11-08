@@ -8,6 +8,7 @@
 - [Your first simulation](./getting-started/first-simulation.md)
 - [Kinetic Studio](./getting-started/studio.md)
 - [The `kinetic` CLI](./getting-started/cli.md)
+- [Configuration](./getting-started/configuration.md)
 
 # Studio
 
