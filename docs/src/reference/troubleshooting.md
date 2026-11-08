@@ -133,14 +133,15 @@ See [Configuration](../getting-started/configuration.md).
 The CLI, renderer and Studio do not build on Linux: they import AppKit, Metal
 and SwiftUI. There is no Linux product.
 
-The physics core does. CI compiles it with g++ on `ubuntu-latest`:
+The physics core does. The first successful run on Linux is:
 
 ```bash
 ./Scripts/bench-core.sh --check --seconds 1
 ```
 
-That is a KineticCore gate, not a substitute for `swift test`. Absolute
-ms/step on that guest is not the M4 table; see
+That compiles KineticCore with g++ and asserts scene sizes, contacts, cost
+ordering, stack stability and bit-identical serial vs threaded runs. It is not
+`swift test`, and its ms/step column is not the M4 table. See
 [Benchmarks](./benchmarks.md).
 
 ## Studio will not launch

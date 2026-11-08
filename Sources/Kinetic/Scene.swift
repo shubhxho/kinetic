@@ -145,7 +145,7 @@ public enum SceneLibrary {
               summary: "Sixty toppling slabs — friction and restitution.",
               build: { dominoes() }),
         Entry(id: "mixed", title: "Mixed primitives",
-              summary: "Spheres, capsules, cylinders and hulls in one pile.",
+              summary: "Spheres, boxes, capsules and cylinders in one pile.",
               build: { mixedPrimitives() }),
     ]
 

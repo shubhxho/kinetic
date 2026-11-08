@@ -25,6 +25,9 @@ struct ContentView: View {
     @StateObject private var foxglove = FoxgloveModeController()
     @StateObject private var measurement = MeasurementState()
 
+    @AppStorage("studio.viewportFrameRate") private var viewportFrameRate = 120
+    @AppStorage("studio.pausedFrameRate") private var pausedFrameRate = 30
+
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var inspectorPresented = true
     @State private var timelineVisible = true
@@ -242,6 +245,8 @@ struct ContentView: View {
                 isPlaying: $model.isPlaying,
                 timeScale: $model.timeScale,
                 commands: model.commands,
+                playingFrameRate: viewportFrameRate,
+                pausedFrameRate: pausedFrameRate,
                 onStats: { model.publish(stats: $0) },
                 onSelect: { model.selectedGeom = $0 },
                 onWillStep: { model.sample() })

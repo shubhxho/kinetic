@@ -49,6 +49,10 @@ public final class KineticView: MTKView {
     public weak var viewportDelegate: ViewportDelegate?
 
     public var isPlaying = false
+    /// Display-link rate while the sim is running or the camera is moving.
+    public var playingFrameRate = 120
+    /// Display-link rate while paused and idle. Lower is most of a CPU core.
+    public var pausedFrameRate = 30
     /// Multiplier on wall-clock time. 1.0 tracks realtime; 0 steps only on demand.
     public var timeScale: Double = 1.0
     /// When false the simulation advances exactly one step per frame.
@@ -75,7 +79,7 @@ public final class KineticView: MTKView {
         colorPixelFormat = .bgra8Unorm
         depthStencilPixelFormat = .invalid
         framebufferOnly = false
-        preferredFramesPerSecond = 120
+        preferredFramesPerSecond = playingFrameRate
         isPaused = false
         enableSetNeedsDisplay = false
         clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
@@ -211,7 +215,9 @@ extension KineticView: MTKViewDelegate {
         // to a few percent; interaction bumps it straight back up, so orbiting a
         // paused scene still feels immediate.
         let wantsHighRate = isPlaying || pendingSingleStep || interactionDeadline > CACurrentMediaTime()
-        let desired = wantsHighRate ? 120 : 30
+        let high = max(playingFrameRate, 1)
+        let low = max(pausedFrameRate, 1)
+        let desired = wantsHighRate ? high : low
         if view.preferredFramesPerSecond != desired { view.preferredFramesPerSecond = desired }
 
         let now = CACurrentMediaTime()
@@ -272,6 +278,8 @@ public struct SimulationViewport: NSViewRepresentable {
     @Binding private var settings: RenderSettings
     @Binding private var isPlaying: Bool
     @Binding private var timeScale: Double
+    private let playingFrameRate: Int
+    private let pausedFrameRate: Int
     private let onStats: (ViewportStats) -> Void
     private let onSelect: (Int?) -> Void
     private let onWillStep: () -> Void
@@ -280,6 +288,8 @@ public struct SimulationViewport: NSViewRepresentable {
     public init(world: World, renderer: Renderer, settings: Binding<RenderSettings>,
                 isPlaying: Binding<Bool>, timeScale: Binding<Double>,
                 commands: ViewportCommands,
+                playingFrameRate: Int = 120,
+                pausedFrameRate: Int = 30,
                 onStats: @escaping (ViewportStats) -> Void = { _ in },
                 onSelect: @escaping (Int?) -> Void = { _ in },
                 onWillStep: @escaping () -> Void = {}) {
@@ -288,6 +298,8 @@ public struct SimulationViewport: NSViewRepresentable {
         self._settings = settings
         self._isPlaying = isPlaying
         self._timeScale = timeScale
+        self.playingFrameRate = playingFrameRate
+        self.pausedFrameRate = pausedFrameRate
         self.commands = commands
         self.onStats = onStats
         self.onSelect = onSelect
@@ -298,6 +310,8 @@ public struct SimulationViewport: NSViewRepresentable {
         let view = KineticView(renderer: renderer)
         view.world = world
         view.settings = settings
+        view.playingFrameRate = playingFrameRate
+        view.pausedFrameRate = pausedFrameRate
         view.viewportDelegate = context.coordinator
         context.coordinator.view = view
         commands.attach(view)
@@ -313,6 +327,8 @@ public struct SimulationViewport: NSViewRepresentable {
         view.settings = settings
         view.isPlaying = isPlaying
         view.timeScale = timeScale
+        view.playingFrameRate = playingFrameRate
+        view.pausedFrameRate = pausedFrameRate
         context.coordinator.parent = self
     }
 

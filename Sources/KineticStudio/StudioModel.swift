@@ -260,6 +260,7 @@ final class StudioModel: ObservableObject {
     private var bridge: FoxgloveBridge?
     private var recorder: LogRecorder?
     private var bridgeTimer: Timer?
+    private var defaultsObserver: NSObjectProtocol?
 
     init() {
         renderer = Renderer(sampleCount: 4)
@@ -272,6 +273,39 @@ final class StudioModel: ObservableObject {
         rebuildChannels()
         applyDefaultPlots()
         history.configure(for: world)
+        applyStoredPreferences()
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.applyStoredPreferences() }
+        }
+    }
+
+    deinit {
+        if let defaultsObserver {
+            NotificationCenter.default.removeObserver(defaultsObserver)
+        }
+    }
+
+    /// Reads the keys `SettingsView` writes. History and the listen port update
+    /// here; publish rate is applied when the bridge starts, so a live socket
+    /// is not torn down from under a connected client.
+    func applyStoredPreferences() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "studio.historySeconds") != nil {
+            let seconds = defaults.double(forKey: "studio.historySeconds")
+            if seconds >= 5, abs(history.windowSeconds - seconds) > 0.01 {
+                history.windowSeconds = seconds
+            }
+        }
+        if defaults.object(forKey: "studio.telemetryPort") != nil {
+            let port = defaults.integer(forKey: "studio.telemetryPort")
+            if (1..<65536).contains(port), bridgePort != UInt16(port) {
+                bridgePort = UInt16(port)
+            }
+        }
     }
 
     var bridgeIsRunning: Bool { bridge?.isRunning ?? false }
@@ -631,7 +665,12 @@ final class StudioModel: ObservableObject {
     // MARK: Bridge
 
     func startBridge() {
+        applyStoredPreferences()
         let bridge = FoxgloveBridge(world: world)
+        if UserDefaults.standard.object(forKey: "studio.publishRate") != nil {
+            let rate = UserDefaults.standard.double(forKey: "studio.publishRate")
+            if rate > 0 { bridge.publishRate = rate }
+        }
         bridge.onLog = { [weak self] message in
             Task { @MainActor in self?.log("bridge: \(message)", .info) }
         }

@@ -2,8 +2,9 @@
 
 <div class="kn-hero">
   <img src="images/quadruped.png" alt="A quadruped standing on its contact solver in the Kinetic viewport">
-  <p class="kn-caption">A twelve-actuator quadruped holding a crouch. Rendered headless with
-  <code>kinetic render quadruped</code> — same renderer the viewport uses.</p>
+  <p class="kn-caption">Twelve-actuator quadruped, crouched. Headless
+  <code>kinetic render quadruped</code> on macOS (1600x1000 Metal). Same renderer
+  as the viewport. Not a screenshot of Studio; this tree has none.</p>
 </div>
 
 Kinetic is a robotics simulator built for macOS. It is one repository containing
@@ -29,15 +30,21 @@ git clone https://github.com/shubhxho/kinetic
 cd kinetic
 swift build -c release
 ./.build/release/kinetic validate
+./.build/release/kinetic run stack --duration 1
 ```
+
+`validate` and `run` need a Mac with Swift 6.3. They do not need Metal. The
+first successful simulation is `run stack --duration 1`. On Linux, use
+`./Scripts/bench-core.sh --check --seconds 1` instead. See
+[Install](./getting-started/install.md).
 
 ## Where to go
 
 <div class="kn-cards">
   <a class="kn-card" href="getting-started/install.html">
     <h3>Install and run</h3>
-    <p>Build from source, verify the engine, bundle the app, put the CLI on your
-    PATH. Configuration has no secrets file.</p>
+    <p>Build, run kinetic validate, then kinetic run stack --duration 1.
+    Configuration has no secrets file.</p>
   </a>
   <a class="kn-card" href="getting-started/first-simulation.html">
     <h3>Your first simulation</h3>
@@ -114,7 +121,9 @@ print(world.centerOfMass)            // SIMD3<Double>(0.0, 0.0, 1.0)
 <div class="kn-compare">
   <div class="kn-figure">
     <img src="images/stack.png" alt="Ten boxes stacked in the dark theme, with a directional shadow on the ground grid">
-    <p class="kn-caption">Dark theme. Forty contact points, max height drift 7 mm.</p>
+    <p class="kn-caption"><code>kinetic render stack</code>, dark theme, macOS Metal.
+    Forty contact points. Max height drift 7 mm is from <code>kinetic validate</code>
+    on a Mac, not from this PNG.</p>
   </div>
   <div class="kn-figure">
     <img src="images/stack-light.png" alt="The same ten-box stack rendered with the light theme">

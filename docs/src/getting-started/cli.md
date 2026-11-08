@@ -20,26 +20,27 @@ sniffed for a `<robot>` or `<mujoco>` root element. USD is not a CLI input;
 use the Swift `USDImporter` API.
 
 Built-in ids: `stack`, `arm`, `quadruped`, `cartpole`, `chain`, `dominoes`,
-`mixed`. Headless captures of six of them:
+`mixed`. Six headless `kinetic render` captures from macOS (Metal, 1600x1000),
+not Studio screenshots:
 
 <div class="kn-compare">
   <div class="kn-figure">
     <img src="../images/arm.png" alt="Six-DOF serial arm in the Kinetic viewport">
-    <p class="kn-caption"><code>arm</code></p>
+    <p class="kn-caption"><code>kinetic render arm</code></p>
   </div>
   <div class="kn-figure">
     <img src="../images/chain.png" alt="Twenty-link pendulum chain hanging in the Kinetic viewport">
-    <p class="kn-caption"><code>chain</code></p>
+    <p class="kn-caption"><code>kinetic render chain</code></p>
   </div>
 </div>
 <div class="kn-compare">
   <div class="kn-figure">
     <img src="../images/dominoes.png" alt="A line of dominoes in the Kinetic viewport">
-    <p class="kn-caption"><code>dominoes</code></p>
+    <p class="kn-caption"><code>kinetic render dominoes</code></p>
   </div>
   <div class="kn-figure">
-    <img src="../images/mixed.png" alt="Mixed spheres, capsules, cylinders and hulls in a pile">
-    <p class="kn-caption"><code>mixed</code></p>
+    <img src="../images/mixed.png" alt="Headless kinetic render of mixed spheres, boxes, capsules and cylinders">
+    <p class="kn-caption"><code>kinetic render mixed</code>: spheres, boxes, capsules, cylinders</p>
   </div>
 </div>
 

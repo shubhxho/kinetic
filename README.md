@@ -13,7 +13,7 @@ Rigid-body physics, a Metal renderer, and Foxglove-compatible telemetry in one r
 </div>
 
 <p align="center">
-  <img src="docs/src/images/quadruped.png" alt="A twelve-actuator quadruped in the Kinetic viewport, crouched on a ground grid with red and green world axes">
+  <img src="docs/src/images/quadruped.png" alt="Headless kinetic render of a twelve-actuator quadruped crouched on a ground grid, macOS Metal, 1600 by 1000. Not a Studio screenshot.">
 </p>
 
 ```bash
@@ -21,9 +21,11 @@ git clone https://github.com/shubhxho/kinetic
 cd kinetic
 swift build -c release
 ./.build/release/kinetic validate
+./.build/release/kinetic run stack --duration 1
 ```
 
 No Python. No ROS. No container. No CUDA. One build command, on a Mac.
+`validate` and `run` do not need Metal. Studio and `kinetic render` do.
 
 ## What is in here
 
@@ -95,6 +97,7 @@ they are not a substitute for the M4 table.
 | 20-link chain | 20 | 0.0040 | 497× |
 | quadruped | 18 | 0.0141 | 142× |
 | 10-box stack | 60 | 0.0868 | 23× |
+| mixed primitives | 144 | 0.2380 | 8.4× |
 | 60 dominoes | 360 | 0.3948 | 5.1× |
 
 ## Thirty seconds of it
