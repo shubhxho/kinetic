@@ -55,8 +55,8 @@ swift build -c release
   </a>
   <a class="kn-card" href="reference/benchmarks.html">
     <h3>Benchmarks</h3>
-    <p>Measured numbers, where the time goes, and what the last rewrite
-    changed.</p>
+    <p>Measured numbers, the invariant suite, where the time goes, and what
+    the last rewrite changed.</p>
   </a>
   <a class="kn-card" href="reference/comparison.html">
     <h3>How it compares</h3>

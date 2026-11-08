@@ -11,10 +11,13 @@ swift build -c release
 swift test
 ./.build/release/kinetic validate
 ./.build/release/kinetic bench
+./Scripts/bench-core.sh --check --seconds 1
 ```
 
-Those four are the landing bar on macOS. This repository's physics core is
-portable C++; the renderer, CLI and Studio are not.
+The first four are the landing bar on macOS. `bench-core.sh` is the landing bar
+for the portable C++ core: it compiles KineticCore and asserts scene sizes,
+contact character, determinism and a coarse cost ordering. The renderer, CLI
+and Studio still need a Mac.
 
 ```bash
 mdbook serve docs --open

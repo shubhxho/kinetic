@@ -37,3 +37,18 @@ jobs:
 
       - name: Bundle the app
         run: ./Scripts/bundle-app.sh release
+
+  # KineticCore is portable C++. This job is the gate that can run off macOS:
+  # it compiles the engine with g++ and asserts scene sizes, contact character,
+  # stack stability, determinism and a coarse cost ordering. It does not assert
+  # the published M4 milliseconds-per-step table.
+  core-bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install g++
+        run: sudo apt-get update && sudo apt-get install -y g++
+
+      - name: KineticCore benchmark tests
+        run: ./Scripts/bench-core.sh --check --seconds 1

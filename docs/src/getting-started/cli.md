@@ -116,7 +116,18 @@ mixed           144     25    1000    0.2380      4201      8.4x       100
 ```
 
 Each scene is warmed up before timing so first-touch page faults do not land in
-the measurement.
+the measurement. `swift test` runs the same protocol as assertions in
+`Tests/KineticTests/BenchmarkTests.swift`. On a machine without Swift, the
+C++ core has the matching gate:
+
+```bash
+./Scripts/bench-core.sh --check --seconds 1
+```
+
+`--check` exits non-zero if a scene's nv/geoms drift, a contact-free scene
+grows contacts, serial and threaded paths diverge, or an articulated scene
+becomes more expensive per step than a contact-rich pile. Absolute ms/step is
+printed, not asserted. See [Benchmarks](../reference/benchmarks.md).
 
 ## `validate`
 

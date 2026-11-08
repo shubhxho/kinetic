@@ -107,7 +107,7 @@ recording.
 
 ## The unit test suite
 
-`swift test` runs 45 tests across nine suites (`@Test` count in
+`swift test` runs 53 tests across ten suites (`@Test` count in
 `Tests/KineticTests`). Beyond the checks above:
 
 | Suite | Notable assertions |
@@ -120,6 +120,12 @@ recording.
 | URDF / MJCF | topology, limits, inertial rotation, `fromto` capsules, options, actuators |
 | Recording | frame-exact round-trip, seeking, channel extraction, CSV export |
 | Transport | WebSocket framing across every length class, partial frames, client masking |
+| Benchmarks | published nv/geom counts; finite timed runs of every `SceneLibrary` scene; contact-free vs contact-rich character; articulated scenes cheaper than piles; serial vs threaded bit-identity; profile stages non-negative; stack still stacked after a timed run |
+
+The same invariants are asserted by `./Scripts/bench-core.sh --check`, which
+compiles KineticCore with g++ and needs no Swift. That is the Ubuntu job in
+`.github/workflows/ci.yml`. It does not assert the published M4
+milliseconds-per-step table.
 
 ## Known limits
 

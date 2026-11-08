@@ -69,8 +69,10 @@ than crashing. Bump the suffix if the tree shape ever changes.
 | `--record <path>` | `run` | off |
 | `--serve` / `--port <n>` | `run`, `serve` | port 8765 |
 | `--rate <hz>` | `serve` | 30 |
-| `--serial` | `bench` | off (threaded narrowphase) |
-| `--seconds <s>` | `bench` | 2 |
+| `--serial` | `bench`, `kinetic-core-bench` | off (threaded narrowphase) |
+| `--seconds <s>` | `bench`, `kinetic-core-bench` | 2 for `kinetic bench`; 1 for `bench-core.sh` |
+| `--check` | `kinetic-core-bench` | off (print a table only) |
+| `--json` | `kinetic-core-bench` | off (human table) |
 | `--out`, `--width`, `--height`, `--light` | `render` | `kinetic-frame.png`, 1600×1000, dark |
 | `--csv <path>` | `replay` | off |
 

@@ -54,6 +54,7 @@ kinetic run <scene|file> --duration 10        # simulate
 kinetic run <scene> --realtime --serve        # realtime, with telemetry
 kinetic bench                                 # benchmark every scene
 kinetic bench --serial                        # single-threaded comparison
+./Scripts/bench-core.sh --check --seconds 1   # KineticCore, no Swift needed
 kinetic validate                              # physics validation suite
 kinetic render <scene> --out frame.png        # headless render (Metal)
 kinetic replay <file.kinlog> --csv out.csv    # inspect or export a recording

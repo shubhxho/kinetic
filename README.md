@@ -72,8 +72,8 @@ $ kinetic validate
   all checks passed
 ```
 
-Every check is a closed-form or conservation-law comparison. Plus 45 unit tests
-across nine suites. [What each one proves.](https://shubhxho.github.io/kinetic/physics/accuracy.html)
+Every check is a closed-form or conservation-law comparison. Plus 53 unit tests
+across ten suites. [What each one proves.](https://shubhxho.github.io/kinetic/physics/accuracy.html)
 
 The transcript above is the engine's documented output, recorded from a macOS
 release build. This checkout was reviewed on Linux, where the Swift/Metal
@@ -83,7 +83,10 @@ toolchain is not present, so that command was not re-run here.
 
 Apple M4, single-threaded except where noted, double precision. Numbers come
 from `kinetic bench` on that machine; they are not re-measured in this
-checkout.
+checkout. The portable core was timed here with
+`./Scripts/bench-core.sh --check --seconds 1` (41 checks passed). Those Linux
+ms/step figures live in the [benchmarks chapter](https://shubhxho.github.io/kinetic/reference/benchmarks.html);
+they are not a substitute for the M4 table.
 
 | Scene | nv | ms/step | realtime |
 | --- | --- | --- | --- |

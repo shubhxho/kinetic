@@ -116,8 +116,18 @@ pulls MLX and therefore the Swift 6.3 toolchain requirement.
 swift test
 ```
 
-45 tests across nine suites: dynamics, kinematics, constraints, the convex hull,
-mesh import, URDF, MJCF, the recording format and the WebSocket transport.
+53 tests across ten suites: dynamics, kinematics, constraints, the convex hull,
+mesh import, URDF, MJCF, the recording format, the WebSocket transport, and
+benchmarks. The benchmark suite times every built-in scene, then asserts
+invariants that do not depend on the host clock (published nv/geom counts,
+contact character, cost ordering, determinism). It does not assert the M4
+milliseconds-per-step table.
+
+The physics core also has a compiler-only gate that runs without Swift:
+
+```bash
+./Scripts/bench-core.sh --check --seconds 1
+```
 
 ## Build the documentation
 

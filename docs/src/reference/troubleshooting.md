@@ -130,11 +130,18 @@ See [Configuration](../getting-started/configuration.md).
 
 ## Building on Linux
 
-The physics core is portable C++20 with no dependencies, but this package does
-not build on Linux: the CLI imports `AppKit`, the renderer is Metal, and Studio
-is SwiftUI. There is no documented Linux product. Use a Mac, or bind
-`kinetic.h` from another language after compiling `KineticCore` yourself
-(that standalone path is not a supported product).
+The CLI, renderer and Studio do not build on Linux: they import AppKit, Metal
+and SwiftUI. There is no Linux product.
+
+The physics core does. CI compiles it with g++ on `ubuntu-latest`:
+
+```bash
+./Scripts/bench-core.sh --check --seconds 1
+```
+
+That is a KineticCore gate, not a substitute for `swift test`. Absolute
+ms/step on that guest is not the M4 table; see
+[Benchmarks](./benchmarks.md).
 
 ## Studio will not launch
 
