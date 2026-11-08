@@ -139,6 +139,8 @@ The physics core does. The first successful run on Linux is:
 ```bash
 ./Scripts/bench-core.sh --config
 ./Scripts/bench-core.sh --check --seconds 1
+./Scripts/test-core-config.sh
+./Scripts/run-c-example.sh
 KINETIC_SERIAL=1 KINETIC_BENCH_SECONDS=2 ./Scripts/bench-core.sh --config
 ```
 

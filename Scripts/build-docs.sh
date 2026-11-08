@@ -43,6 +43,7 @@ if [[ "$need_download" -eq 1 ]]; then
 fi
 
 echo "▸ $(mdbook --version)"
+python3 "$ROOT/docs/check-images.py" "$ROOT"
 mdbook build "$ROOT/docs"
 python3 "$ROOT/docs/check-links.py" "$ROOT/docs/book"
 echo "▸ docs/book"

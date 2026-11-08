@@ -81,6 +81,13 @@ clang -std=c11 example.c \
   -L.build/release -lKineticCore -lc++ -o example
 ```
 
+That link line needs a SwiftPM `libKineticCore` on macOS. On Linux the same
+source is `Tests/KineticCExample/resting-ball.c`:
+
+```bash
+./Scripts/run-c-example.sh
+```
+
 ## Descriptors
 
 Every descriptor has a `_defaults` function. **Always call it** — new fields will

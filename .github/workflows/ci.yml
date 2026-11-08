@@ -52,3 +52,9 @@ jobs:
 
       - name: KineticCore benchmark tests
         run: ./Scripts/bench-core.sh --check --seconds 1
+
+      - name: KineticCore config regressions
+        run: ./Scripts/test-core-config.sh
+
+      - name: C ABI example
+        run: ./Scripts/run-c-example.sh
