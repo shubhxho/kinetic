@@ -5,8 +5,10 @@ layers below it, and each can be used without the ones above.
 
 <div class="kn-figure">
   <img src="../images/architecture.png" alt="Layer diagram: KineticStudio and the kinetic CLI sit on KineticRender, KineticBridge and KineticML, which call the Swift Kinetic API, which binds kinetic.h over KineticCore">
-  <p class="kn-caption">Rendered from <code>docs/src/images/architecture.svg</code>. Linking
-  <code>Kinetic</code> alone gives a headless engine with no GUI dependency.</p>
+  <p class="kn-caption">PNG raster of <code>docs/src/images/architecture.svg</code>,
+  committed next to the SVG. Linking <code>Kinetic</code> alone is a headless
+  engine with no GUI. <code>mlx-swift</code> is still a root package dependency,
+  so Swift 6.3 is required even when you do not link <code>KineticML</code>.</p>
 </div>
 
 ```text
@@ -206,9 +208,12 @@ registered in `PanelKind`, so they are not reachable from the layout menu.
 
 <div class="kn-figure">
   <img src="../images/data-flow.png" alt="Data flow: controllers write control into World, step() runs the ten-stage pipeline, state is read by the renderer, recordings, Foxglove and ML insight">
-  <p class="kn-caption">Who writes <code>ctrl</code>, what <code>step()</code> does, and who
-  reads the result. USD is a Swift-API import path; the CLI and Studio Open
-  dialog load URDF and MJCF.</p>
+  <p class="kn-caption">PNG raster of <code>docs/src/images/data-flow.svg</code>.
+  Controllers, Foxglove clients and Studio joints write into <code>World</code>;
+  <code>step()</code> runs kinematics, collision and the solver; the renderer,
+  <code>.kinlog</code> recordings, the Foxglove server and ML insight read the
+  result. USD is a Swift-API import path; the CLI and Studio Open dialog load
+  URDF and MJCF.</p>
 </div>
 
 ## Where state lives

@@ -45,19 +45,21 @@ let library = ModelLibrary(cacheURL: URL(fileURLWithPath: "/tmp/kinetic-models")
 
 ## Studio Settings (`⌘,`)
 
-Stored in `UserDefaults` / `@AppStorage`, not in a file you edit.
+Stored in `UserDefaults` / `@AppStorage`, not in a file you edit. The
+preferences window writes these keys; the running app reads them.
 
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `studio.telemetryPort` | `8765` | Foxglove WebSocket listen port |
-| `studio.publishRate` | `30` | Bridge publish rate, Hz |
-| `studio.historySeconds` | `20` | Timeline state window |
-| `studio.viewportFrameRate` | `120` | Display link while playing |
-| `studio.pausedFrameRate` | `30` | Display link while paused |
-| `studio.panels.layout.v1` | Simulate preset | Binary-split panel tree, JSON |
+| Key | Default | Meaning | When it applies |
+| --- | --- | --- | --- |
+| `studio.telemetryPort` | `8765` | Foxglove WebSocket listen port | next time you start the telemetry server |
+| `studio.publishRate` | `30` | Bridge publish rate, Hz | next time you start the telemetry server |
+| `studio.historySeconds` | `20` | Timeline state window | immediately (resizes the ring buffer) |
+| `studio.viewportFrameRate` | `120` | Display link while playing | immediately |
+| `studio.pausedFrameRate` | `30` | Display link while paused | immediately |
+| `studio.panels.layout.v1` | Simulate preset | Binary-split panel tree, JSON | on launch, and when you save a layout |
 
 A decode failure of the layout key falls back to the Simulate preset rather
-than crashing. Bump the suffix if the tree shape ever changes.
+than crashing. Bump the suffix if the tree shape ever changes. Changing the
+listen port does not restart a server that is already bound.
 
 ## CLI flags that change behaviour
 

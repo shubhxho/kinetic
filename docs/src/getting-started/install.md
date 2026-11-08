@@ -1,7 +1,9 @@
 # Install
 
-Kinetic runs on macOS 14 or later with a Metal 3 GPU. That is what
-`Package.swift` declares (`platforms: [.macOS(.v14)]`, `swift-tools-version: 6.0`).
+Kinetic Studio and `kinetic render` run on macOS 14 or later with a Metal 3
+GPU. That is what `Package.swift` declares (`platforms: [.macOS(.v14)]`,
+`swift-tools-version: 6.0`). The CLI physics commands (`validate`, `run`,
+`bench`, `info`, `list`) need the same OS and Swift toolchain, not a GPU.
 
 A current `swift build` needs more than that, because the pinned MLX dependency
 does:
@@ -24,6 +26,10 @@ swift --version      # Apple Swift 6.3 or newer, for a current mlx-swift pin
 xcodebuild -version  # Xcode 26 on CI; older Xcode will fail at package resolution
 ```
 
+`mlx-swift` is a root `Package.swift` dependency. SwiftPM parses it before it
+builds any product, so a consumer that links only `Kinetic` still needs Swift
+6.3. Omitting `KineticML` does not skip that toolchain.
+
 ## Build from source
 
 ```bash
@@ -39,11 +45,25 @@ That produces two executables in `.build/release`:
 | `kinetic` | the command-line tool |
 | `KineticStudio` | the app's raw executable |
 
-Confirm the engine is healthy before going further:
+## First successful simulation
+
+Do this before Studio. It does not need Metal.
 
 ```bash
 ./.build/release/kinetic validate
+./.build/release/kinetic list
+./.build/release/kinetic run stack --duration 1
 ```
+
+`validate` exits 0 only if every closed-form check passes.
+`list` prints the seven built-in scene ids (`stack`, `arm`, `quadruped`,
+`cartpole`, `chain`, `dominoes`, `mixed`).
+`run stack --duration 1` steps the ten-box tower for one simulated second and
+prints realtime factor, step cost, contacts and energy. That is a completed
+simulation.
+
+The transcript below is from a macOS release build of `kinetic validate`. It
+was not re-run in the Linux documentation checkout, which has g++ but no Swift.
 
 ```text
 Physics validation
@@ -106,9 +126,10 @@ targets: [
 ]
 ```
 
-The products are separable. `Kinetic` alone has no GUI dependency and is safe
-to link into a headless tool or a test target. `KineticML` is the one that
-pulls MLX and therefore the Swift 6.3 toolchain requirement.
+The products are separable at link time. `Kinetic` alone has no GUI dependency
+and is safe to link into a headless tool or a test target. Swift 6.3 is still
+required for any product in this package, because `mlx-swift` is declared at
+the root of `Package.swift` and SwiftPM reads that manifest first.
 
 ## Run the tests
 
@@ -123,11 +144,16 @@ invariants that do not depend on the host clock (published nv/geom counts,
 contact character, cost ordering, determinism). It does not assert the M4
 milliseconds-per-step table.
 
-The physics core also has a compiler-only gate that runs without Swift:
+The physics core also has a compiler-only gate that runs without Swift. On
+Linux that is the first successful run this tree can actually execute:
 
 ```bash
 ./Scripts/bench-core.sh --check --seconds 1
 ```
+
+It compiles KineticCore with g++ or `$CXX` and asserts scene sizes, contact
+character, cost ordering, stack stability and bit-identical serial vs
+threaded runs. Absolute ms/step is printed. It is not the M4 table.
 
 ## Build the documentation
 
