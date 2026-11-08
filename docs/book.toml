@@ -1,6 +1,6 @@
 [book]
 title = "Kinetic"
-description = "Native macOS robotics simulation — physics, rendering and telemetry."
+description = "Native macOS robotics simulation. C++20 physics, Metal renderer, Foxglove telemetry. No Python, no ROS, no CUDA."
 authors = ["Kinetic contributors"]
 language = "en"
 src = "src"

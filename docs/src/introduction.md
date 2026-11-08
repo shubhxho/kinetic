@@ -1,28 +1,32 @@
 # Kinetic
 
+<p class="kn-pitch">
+  Native macOS robotics simulation.<br>
+  C++20 physics. Metal renderer. Foxglove telemetry.<br>
+  <span class="kn-no">No Python. No ROS. No container. No CUDA.</span>
+</p>
+
+<div class="kn-stats">
+  <div class="kn-stat"><span class="value">142×</span><span class="label">quadruped realtime, M4</span></div>
+  <div class="kn-stat"><span class="value">5.1×</span><span class="label">60 dominoes, 282 contacts</span></div>
+  <div class="kn-stat"><span class="value">0.0 mm</span><span class="label">resting penetration</span></div>
+  <div class="kn-stat"><span class="value">120 m/s</span><span class="label">stops at a 10 mm wall</span></div>
+</div>
+
+<p class="kn-caption">M4 numbers from <code>kinetic bench</code> on that machine. Resting contact and the
+projectile are <code>kinetic validate</code>. Neither was re-measured in this Linux
+checkout. Full table: <a href="reference/benchmarks.html">Benchmarks</a>.</p>
+
 <div class="kn-hero">
   <img src="images/quadruped.png" alt="A quadruped standing on its contact solver in the Kinetic viewport">
   <p class="kn-caption">A twelve-actuator quadruped holding a crouch. Rendered headless with
-  <code>kinetic render quadruped</code> — same renderer the viewport uses.</p>
+  <code>kinetic render quadruped</code>. Same renderer the viewport uses.</p>
 </div>
 
-Kinetic is a robotics simulator built for macOS. It is one repository containing
-the pieces that usually come from four different projects, plus on-device ML:
-
-- a **rigid-body physics engine** in C++20: reduced-coordinate articulated
-  dynamics, convex collision detection, and a soft-constraint solver;
-- a **Metal renderer**: instanced physically-based shading, shadow mapping and
-  debug overlays, running on Apple GPUs with no translation layer;
-- **Kinetic Studio**: a native SwiftUI application for driving, inspecting and
-  scrubbing a running simulation;
-- a **telemetry server** that speaks the Foxglove WebSocket protocol, so any
-  Foxglove client can visualise a Kinetic scene without a bridge process;
-- **KineticML**: policies, streaming insight and a scene-language grammar, on
-  the same GPU, with honest fallbacks when MLX is missing.
-
-Everything is native. There is no Python runtime, no ROS installation, no
-container, no CUDA. `swift build` produces the whole system in under a minute
-and the result is a single Mach-O binary plus an app bundle.
+One repository: a C++20 rigid-body engine, a Metal renderer, Kinetic Studio,
+a Foxglove WebSocket server, and on-device ML. `swift build` produces the
+whole system in under a minute. The result is a Mach-O binary plus an app
+bundle.
 
 ```bash
 git clone https://github.com/shubhxho/kinetic

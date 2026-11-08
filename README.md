@@ -3,7 +3,12 @@
 # Kinetic
 
 **Native macOS robotics simulation.**
-Rigid-body physics, a Metal renderer, and Foxglove-compatible telemetry in one repository, with no runtime to install.
+
+C++20 physics. Metal renderer. Foxglove telemetry.  
+No Python. No ROS. No container. No CUDA.
+
+M4: 12-actuator quadruped at **142×** realtime. 60 dominoes at **5.1×**.  
+A 120 m/s shot stops at a 10 mm wall.
 
 [Documentation](https://shubhxho.github.io/kinetic) ·
 [Getting started](https://shubhxho.github.io/kinetic/getting-started/install.html) ·
@@ -23,7 +28,7 @@ swift build -c release
 ./.build/release/kinetic validate
 ```
 
-No Python. No ROS. No container. No CUDA. One build command, on a Mac.
+One build command, on a Mac.
 
 ## What is in here
 

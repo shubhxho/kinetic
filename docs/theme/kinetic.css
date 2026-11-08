@@ -207,6 +207,19 @@ hr {
 
 /* Book-specific components ----------------------------------------------- */
 
+.kn-pitch {
+  font-size: 1.22rem;
+  font-weight: 560;
+  letter-spacing: -0.022em;
+  line-height: 1.45;
+  margin: 0.15em 0 1.15em;
+}
+
+.kn-pitch .kn-no {
+  font-weight: 500;
+  opacity: 0.72;
+}
+
 .kn-hero {
   margin: 1.6em 0 2.2em;
 }
