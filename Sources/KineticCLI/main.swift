@@ -84,6 +84,141 @@ func padLeft(_ text: String, _ width: Int) -> String {
     text.count >= width ? text : String(repeating: " ", count: width - text.count) + text
 }
 
+// MARK: - CLI configuration
+//
+// Flags beat environment variables, which beat compiled defaults. `kinetic config`
+// prints the resolved values so you can see which layer won. Never print the
+// contents of GITHUB_TOKEN.
+
+enum CLIEnv {
+    static func string(_ name: String) -> String? {
+        guard let value = ProcessInfo.processInfo.environment[name], !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    static func present(_ name: String) -> Bool {
+        ProcessInfo.processInfo.environment[name] != nil
+    }
+
+    static func int(_ name: String) -> Int? { string(name).flatMap(Int.init) }
+    static func double(_ name: String) -> Double? { string(name).flatMap(Double.init) }
+}
+
+struct ResolvedCLI {
+    var duration: Double
+    var durationSource: String
+    var port: UInt16
+    var portSource: String
+    var rate: Double
+    var rateSource: String
+    var serial: Bool
+    var serialSource: String
+    var benchSeconds: Double
+    var benchSecondsSource: String
+
+    static func from(_ arguments: Arguments) -> ResolvedCLI {
+        let duration: Double
+        let durationSource: String
+        if let value = arguments.double("duration") {
+            duration = value
+            durationSource = "--duration"
+        } else if let value = CLIEnv.double("KINETIC_DURATION") {
+            duration = value
+            durationSource = "KINETIC_DURATION"
+        } else {
+            duration = 5.0
+            durationSource = "default"
+        }
+
+        let port: UInt16
+        let portSource: String
+        if let value = arguments.int("port"), (1..<65536).contains(value) {
+            port = UInt16(value)
+            portSource = "--port"
+        } else if let value = CLIEnv.int("KINETIC_PORT"), (1..<65536).contains(value) {
+            port = UInt16(value)
+            portSource = "KINETIC_PORT"
+        } else {
+            port = 8765
+            portSource = "default"
+        }
+
+        let rate: Double
+        let rateSource: String
+        if let value = arguments.double("rate"), value > 0 {
+            rate = value
+            rateSource = "--rate"
+        } else if let value = CLIEnv.double("KINETIC_RATE"), value > 0 {
+            rate = value
+            rateSource = "KINETIC_RATE"
+        } else {
+            rate = 30
+            rateSource = "default"
+        }
+
+        let serial: Bool
+        let serialSource: String
+        if arguments.has("serial") {
+            serial = true
+            serialSource = "--serial"
+        } else if CLIEnv.present("KINETIC_SERIAL") {
+            serial = true
+            serialSource = "KINETIC_SERIAL"
+        } else {
+            serial = false
+            serialSource = "default"
+        }
+
+        let benchSeconds: Double
+        let benchSecondsSource: String
+        if let value = arguments.double("seconds"), value > 0 {
+            benchSeconds = value
+            benchSecondsSource = "--seconds"
+        } else if let value = CLIEnv.double("KINETIC_BENCH_SECONDS"), value > 0 {
+            benchSeconds = value
+            benchSecondsSource = "KINETIC_BENCH_SECONDS"
+        } else {
+            benchSeconds = 2.0
+            benchSecondsSource = "default"
+        }
+
+        return ResolvedCLI(duration: duration, durationSource: durationSource,
+                           port: port, portSource: portSource,
+                           rate: rate, rateSource: rateSource,
+                           serial: serial, serialSource: serialSource,
+                           benchSeconds: benchSeconds, benchSecondsSource: benchSecondsSource)
+    }
+
+    func applySimulation(to world: World) {
+        var options = world.options
+        options.multithreaded = !serial
+        world.options = options
+    }
+}
+
+func commandConfig(_ arguments: Arguments) {
+    let resolved = ResolvedCLI.from(arguments)
+    let tokenSet = CLIEnv.present("GITHUB_TOKEN")
+    print(Term.bold("kinetic configuration"))
+    print(Term.dim("  flag > environment > compiled default. GITHUB_TOKEN is shown as set/unset."))
+    print()
+    print(Term.dim(pad("knob", 22) + pad("value", 14) + "source"))
+    func row(_ name: String, _ value: String, _ source: String) {
+        print("  " + pad(name, 20) + pad(value, 14) + Term.dim(source))
+    }
+    row("duration", "\(formatNumber(resolved.duration, 1)) s", resolved.durationSource)
+    row("port", "\(resolved.port)", resolved.portSource)
+    row("rate", "\(formatNumber(resolved.rate, 0)) Hz", resolved.rateSource)
+    row("serial", resolved.serial ? "on" : "off", resolved.serialSource)
+    row("bench seconds", "\(formatNumber(resolved.benchSeconds, 1)) s", resolved.benchSecondsSource)
+    row("GITHUB_TOKEN", tokenSet ? "set" : "unset", tokenSet ? "environment" : "default")
+    print()
+    print(Term.dim("  KINETIC_DURATION, KINETIC_PORT, KINETIC_RATE, KINETIC_SERIAL,"))
+    print(Term.dim("  KINETIC_BENCH_SECONDS, GITHUB_TOKEN"))
+}
+
 // MARK: - Model loading
 
 func loadWorld(_ target: String) throws -> World {
@@ -176,10 +311,12 @@ func commandInfo(_ arguments: Arguments) throws {
 
 func commandRun(_ arguments: Arguments) throws {
     guard let target = arguments.positional.first else {
-        throw CLIError.message("usage: kinetic run <scene|file> [--duration s] [--record out.kinlog] [--serve] [--port 8765]")
+        throw CLIError.message("usage: kinetic run <scene|file> [--duration s] [--record out.kinlog] [--serve] [--port 8765] [--rate 30] [--serial]")
     }
     let world = try loadWorld(target)
-    let duration = arguments.double("duration") ?? 5.0
+    let cfg = ResolvedCLI.from(arguments)
+    cfg.applySimulation(to: world)
+    let duration = cfg.duration
     let steps = arguments.int("steps") ?? Int(duration / world.options.timestep)
 
     var recorder: LogRecorder?
@@ -190,12 +327,12 @@ func commandRun(_ arguments: Arguments) throws {
 
     var bridge: FoxgloveBridge?
     if arguments.has("serve") {
-        let port = UInt16(arguments.int("port") ?? 8765)
         let server = FoxgloveBridge(world: world)
-        try server.start(port: port)
+        server.publishRate = cfg.rate
+        try server.start(port: cfg.port)
         bridge = server
-        print(Term.green("telemetry ") + "ws://localhost:\(port)"
-              + Term.dim("  (Foxglove: Open connection → Foxglove WebSocket)"))
+        print(Term.green("telemetry ") + "ws://localhost:\(cfg.port)"
+              + Term.dim("  \(formatNumber(cfg.rate, 0)) Hz  (Foxglove: Open connection → Foxglove WebSocket)"))
     }
 
     let realtime = arguments.has("realtime")
@@ -203,7 +340,9 @@ func commandRun(_ arguments: Arguments) throws {
     var lastReport = Date()
     let reportEvery = 0.5
 
-    print(Term.bold("Running ") + target + Term.dim("  \(steps) steps @ \(formatNumber(world.options.timestep * 1000, 2)) ms"))
+    print(Term.bold("Running ") + target
+          + Term.dim("  \(steps) steps @ \(formatNumber(world.options.timestep * 1000, 2)) ms")
+          + Term.dim(cfg.serial ? "  serial" : "  threaded"))
 
     for step in 0..<steps {
         world.step()
@@ -252,7 +391,8 @@ func commandRun(_ arguments: Arguments) throws {
 }
 
 func commandBench(_ arguments: Arguments) throws {
-    let seconds = arguments.double("seconds") ?? 2.0
+    let cfg = ResolvedCLI.from(arguments)
+    let seconds = cfg.benchSeconds
     let targets = arguments.positional.isEmpty
         ? SceneLibrary.all.map(\.id)
         : arguments.positional
@@ -263,7 +403,7 @@ func commandBench(_ arguments: Arguments) throws {
                    + padLeft("steps", 8) + padLeft("ms/step", 10) + padLeft("steps/s", 10)
                    + padLeft("realtime", 10) + padLeft("contacts", 10)))
 
-    let threaded = !arguments.has("serial")
+    let threaded = !cfg.serial
     for target in targets {
         guard let world = SceneLibrary.build(target) ?? (try? loadWorld(target)) else { continue }
         var simOptions = world.options
@@ -541,9 +681,11 @@ func commandReplay(_ arguments: Arguments) throws {
 func commandServe(_ arguments: Arguments) throws {
     let target = arguments.positional.first ?? "arm"
     let world = try loadWorld(target)
-    let port = UInt16(arguments.int("port") ?? 8765)
+    let cfg = ResolvedCLI.from(arguments)
+    cfg.applySimulation(to: world)
+    let port = cfg.port
     let bridge = FoxgloveBridge(world: world)
-    bridge.publishRate = arguments.double("rate") ?? 30
+    bridge.publishRate = cfg.rate
     bridge.onLog = { print(Term.dim("  [bridge] " + $0)) }
     try bridge.start(port: port)
 
@@ -551,6 +693,8 @@ func commandServe(_ arguments: Arguments) throws {
     print()
     print("  scene    \(target)")
     print("  address  \(Term.cyan("ws://localhost:\(port)"))")
+    print("  rate     \(formatNumber(cfg.rate, 0)) Hz")
+    print("  narrowphase \(cfg.serial ? "serial" : "threaded")")
     print("  protocol foxglove.websocket.v1")
     print("  topics   /kinetic/scene, /kinetic/contacts, /kinetic/tf, /kinetic/state,")
     print("           /kinetic/profile, /kinetic/sensors")
@@ -736,6 +880,8 @@ func commandHelp() {
       \(Term.cyan("replay"))   <file.kinlog>     inspect or export a recording
       \(Term.cyan("serve"))    <scene|file>      stream live telemetry over WebSocket
       \(Term.cyan("models"))   [subcommand]      browse, fetch and validate published robot models
+      \(Term.cyan("config"))                     print resolved flags, env and defaults
+      \(Term.cyan("version"))                    print \(World.versionString)
 
     \(Term.bold("OPTIONS"))
       --duration <s>      simulated seconds for `run` (default 5)
@@ -745,17 +891,26 @@ func commandHelp() {
       --serve             also start the telemetry server
       --port <n>          telemetry port (default 8765)
       --rate <hz>         telemetry publish rate (default 30)
+      --serial            single-threaded narrowphase (`run`, `bench`, `serve`)
+      --seconds <s>       simulated seconds for `bench` (default 2)
       --out <path>        output file for `render`
       --width/--height    render size (default 1600x1000)
       --light             render with the light theme
+      --no-contacts       hide the contact overlay in `render`
       --csv <path>        export every channel of a recording
 
+    \(Term.bold("ENVIRONMENT"))
+      flag > environment > compiled default. `kinetic config` shows which layer won.
+      KINETIC_DURATION, KINETIC_PORT, KINETIC_RATE, KINETIC_SERIAL,
+      KINETIC_BENCH_SECONDS, GITHUB_TOKEN
+
     \(Term.bold("EXAMPLES"))
-      kinetic bench
+      kinetic config
+      kinetic bench --serial --seconds 1
       kinetic run quadruped --duration 10 --record walk.kinlog
+      kinetic run stack --serve --rate 60
       kinetic serve arm --port 8765
       kinetic render stack --steps 400 --out stack.png
-      kinetic info ~/models/panda.urdf
       kinetic models list
       kinetic models fetch unitree-go2 && kinetic models validate unitree-go2
     """)
@@ -766,18 +921,24 @@ func commandHelp() {
 let arguments = Arguments(Array(CommandLine.arguments.dropFirst()))
 
 do {
-    switch arguments.command {
-    case "list": commandList()
-    case "info": try commandInfo(arguments)
-    case "run": try commandRun(arguments)
-    case "bench", "benchmark": try commandBench(arguments)
-    case "validate", "verify": try commandValidate(arguments)
-    case "render", "screenshot": try commandRender(arguments)
-    case "replay", "log": try commandReplay(arguments)
-    case "serve": try commandServe(arguments)
-    case "models", "model": try commandModels(arguments)
-    case "version", "--version": print(World.versionString)
-    default: commandHelp()
+    if arguments.has("version") || arguments.command == "version" {
+        print(World.versionString)
+    } else if arguments.has("help") || arguments.command == "help" {
+        commandHelp()
+    } else {
+        switch arguments.command {
+        case "list": commandList()
+        case "info": try commandInfo(arguments)
+        case "run": try commandRun(arguments)
+        case "bench", "benchmark": try commandBench(arguments)
+        case "validate", "verify": try commandValidate(arguments)
+        case "render", "screenshot": try commandRender(arguments)
+        case "replay", "log": try commandReplay(arguments)
+        case "serve": try commandServe(arguments)
+        case "models", "model": try commandModels(arguments)
+        case "config": commandConfig(arguments)
+        default: commandHelp()
+        }
     }
 } catch {
     FileHandle.standardError.write(Data((Term.red("error: ") + "\(error)\n").utf8))

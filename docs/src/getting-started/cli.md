@@ -12,6 +12,8 @@ kinetic <command> [arguments]
   replay   <file.kinlog>     inspect or export a recording
   serve    <scene|file>      stream live telemetry over WebSocket
   models   [subcommand]      browse, fetch and validate published robots
+  config                     print resolved flags, env and defaults
+  version                    print the engine version
 ```
 
 Anywhere a scene is accepted you may give a built-in name (`kinetic list`), or a
@@ -82,20 +84,24 @@ The fastest way to check that an import produced the topology you expected.
 
 ```bash
 kinetic run quadruped --duration 10 --record walk.kinlog
-kinetic run panda.urdf --realtime --serve --port 8765
+kinetic run panda.urdf --realtime --serve --port 8765 --rate 60
+kinetic run stack --serial --duration 1
 ```
 
 | Flag | Meaning |
 | --- | --- |
-| `--duration <s>` | simulated seconds (default 5) |
+| `--duration <s>` | simulated seconds (default 5, or `KINETIC_DURATION`) |
 | `--steps <n>` | explicit step count, overrides `--duration` |
 | `--realtime` | pace to wall-clock time instead of running flat out |
 | `--record <path>` | write a `.kinlog` |
 | `--serve` | also start the telemetry server |
-| `--port <n>` | telemetry port (default 8765) |
+| `--port <n>` | telemetry port (default 8765, or `KINETIC_PORT`) |
+| `--rate <hz>` | telemetry publish rate when serving (default 30, or `KINETIC_RATE`) |
+| `--serial` | single-threaded narrowphase (default off, or `KINETIC_SERIAL`) |
 
 A live status line reports simulated time, realtime factor, step cost, contact
-count and total energy. When the run ends with `--serve`, the server stays up.
+count and total energy. When the run ends with `--serve`, the server stays up
+and honours `--rate` / `KINETIC_RATE`.
 
 ## `bench`
 
@@ -176,8 +182,24 @@ contact counts — as one wide table for analysis elsewhere.
 kinetic serve arm --port 8765 --rate 60
 ```
 
-Steps the scene in realtime on a background queue and publishes it. Any Foxglove
-client can connect; so can Studio. See [Connecting Foxglove](../telemetry/foxglove.md).
+Steps the scene in realtime on a background queue and publishes it. Honours
+`--port`, `--rate` and `--serial` (and the matching `KINETIC_*` variables).
+Any Foxglove client can connect; so can Studio. See
+[Connecting Foxglove](../telemetry/foxglove.md).
+
+## `config`
+
+```bash
+kinetic config
+kinetic config --port 9000 --serial
+KINETIC_RATE=60 kinetic config
+```
+
+Prints duration, port, rate, serial, bench seconds, and whether `GITHUB_TOKEN`
+is set. Each row names the layer that won: a flag, an environment variable, or
+the compiled default. On a machine without Swift, the matching dump is
+`./Scripts/bench-core.sh --config`. Full table:
+[Configuration](./configuration.md).
 
 ## `models`
 

@@ -6,6 +6,8 @@
 #   ./Scripts/bench-core.sh --seconds 2
 #   ./Scripts/bench-core.sh --serial --check
 #   ./Scripts/bench-core.sh --json --check --seconds 1
+#   ./Scripts/bench-core.sh --config
+#   KINETIC_SERIAL=1 KINETIC_BENCH_SECONDS=2 ./Scripts/bench-core.sh --config
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

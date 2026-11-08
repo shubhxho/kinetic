@@ -683,29 +683,72 @@ void run_checks(const std::vector<BenchRow> &rows, bool threaded) {
 }
 
 void usage() {
-    std::printf("Usage: kinetic-core-bench [--seconds N] [--serial] [--check] [--json] [scene...]\n");
+    std::printf("Usage: kinetic-core-bench [--seconds N] [--serial] [--check] [--json] [--config] [scene...]\n");
     std::printf("Scenes: cartpole arm chain quadruped stack mixed dominoes\n");
+    std::printf("\n");
+    std::printf("  flag > environment > compiled default\n");
+    std::printf("  --seconds / KINETIC_BENCH_SECONDS   simulated seconds (default 1)\n");
+    std::printf("  --serial  / KINETIC_SERIAL          single-threaded narrowphase\n");
+    std::printf("  --config                            print resolved knobs and exit\n");
+}
+
+const char *env_nonempty(const char *name) {
+    const char *value = std::getenv(name);
+    return (value && value[0] != '\0') ? value : nullptr;
+}
+
+void print_config(double seconds, const char *seconds_src,
+                  bool threaded, const char *serial_src,
+                  bool do_check, bool json) {
+    std::printf("kinetic-core-bench configuration\n");
+    std::printf("  flag > environment > compiled default\n\n");
+    std::printf("  %-16s %-12s %s\n", "knob", "value", "source");
+    std::printf("  %-16s %-12.1f %s\n", "seconds", seconds, seconds_src);
+    std::printf("  %-16s %-12s %s\n", "serial", threaded ? "off" : "on", serial_src);
+    std::printf("  %-16s %-12s %s\n", "check", do_check ? "on" : "off",
+                do_check ? "--check" : "default");
+    std::printf("  %-16s %-12s %s\n", "json", json ? "on" : "off",
+                json ? "--json" : "default");
 }
 
 }  // namespace
 
 int main(int argc, char **argv) {
     double seconds = 1.0;
+    const char *seconds_src = "default";
     bool threaded = true;
+    const char *serial_src = "default";
     bool do_check = false;
+    bool dump_config = false;
     std::vector<std::string> ids;
+
+    if (const char *env_seconds = env_nonempty("KINETIC_BENCH_SECONDS")) {
+        double value = std::atof(env_seconds);
+        if (value > 0) {
+            seconds = value;
+            seconds_src = "KINETIC_BENCH_SECONDS";
+        }
+    }
+    if (std::getenv("KINETIC_SERIAL") != nullptr) {
+        threaded = false;
+        serial_src = "KINETIC_SERIAL";
+    }
 
     for (int i = 1; i < argc; ++i) {
         const char *a = argv[i];
         if (std::strcmp(a, "--seconds") == 0 && i + 1 < argc) {
             seconds = std::atof(argv[++i]);
             if (seconds <= 0) seconds = 1.0;
+            seconds_src = "--seconds";
         } else if (std::strcmp(a, "--serial") == 0) {
             threaded = false;
+            serial_src = "--serial";
         } else if (std::strcmp(a, "--check") == 0) {
             do_check = true;
         } else if (std::strcmp(a, "--json") == 0) {
             g_json = true;
+        } else if (std::strcmp(a, "--config") == 0) {
+            dump_config = true;
         } else if (std::strcmp(a, "--help") == 0 || std::strcmp(a, "-h") == 0) {
             usage();
             return 0;
@@ -716,6 +759,11 @@ int main(int argc, char **argv) {
         } else {
             ids.emplace_back(a);
         }
+    }
+
+    if (dump_config) {
+        print_config(seconds, seconds_src, threaded, serial_src, do_check, g_json);
+        return 0;
     }
 
     if (ids.empty()) {

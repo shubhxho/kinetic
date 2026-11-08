@@ -35,6 +35,7 @@ swift build -c release
 
 `validate` and `run` need a Mac with Swift 6.3. They do not need Metal. The
 first successful simulation is `run stack --duration 1`. On Linux, use
+`./Scripts/bench-core.sh --config` then
 `./Scripts/bench-core.sh --check --seconds 1` instead. See
 [Install](./getting-started/install.md).
 
@@ -43,7 +44,7 @@ first successful simulation is `run stack --duration 1`. On Linux, use
 <div class="kn-cards">
   <a class="kn-card" href="getting-started/install.html">
     <h3>Install and run</h3>
-    <p>Build, run kinetic validate, then kinetic run stack --duration 1.
+    <p>Build, run kinetic validate, kinetic config, then kinetic run stack --duration 1.
     Configuration has no secrets file.</p>
   </a>
   <a class="kn-card" href="getting-started/first-simulation.html">

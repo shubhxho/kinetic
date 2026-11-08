@@ -161,7 +161,9 @@ swift build -c release
 Reproduce the Linux KineticCore table with:
 
 ```bash
+./Scripts/bench-core.sh --config
 ./Scripts/bench-core.sh --check --seconds 1
 ./.build/kinetic-core-bench --seconds 2
 ./.build/kinetic-core-bench --serial --seconds 2
+KINETIC_SERIAL=1 KINETIC_BENCH_SECONDS=2 ./.build/kinetic-core-bench --config
 ```
