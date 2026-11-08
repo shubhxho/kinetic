@@ -2,16 +2,31 @@
 
 Kinetic has no config file and no cloud account. The knobs that exist are
 environment variables, Studio Settings, CLI flags, and `SimulationOptions` on
-the world.
+the world. Flags beat environment variables, which beat compiled defaults.
 
-Nothing in this chapter is a secret. Do not put a real GitHub token, signing
-identity or API key in the tree.
+Dump what the process will actually use:
+
+```bash
+kinetic config                              # macOS CLI
+kinetic config --port 9000 --rate 60        # flags win
+KINETIC_PORT=9000 kinetic config            # env wins over default
+./Scripts/bench-core.sh --config            # KineticCore, no Swift needed
+```
+
+`kinetic config` never prints the contents of `GITHUB_TOKEN`, only `set` or
+`unset`. Nothing in this chapter is a secret. Do not put a real GitHub token,
+signing identity or API key in the tree.
 
 ## Environment
 
 | Variable | Who reads it | Effect |
 | --- | --- | --- |
 | `GITHUB_TOKEN` | `ModelLibrary` fetch | Sent as `Authorization: Bearer …` on GitHub tree listings. Anonymous traffic is 60 requests an hour; a token raises that. Create a classic PAT with `public_repo` (or finer) and export it in the shell. Never commit it. |
+| `KINETIC_DURATION` | `kinetic run` | Simulated seconds when `--duration` is omitted (default 5). |
+| `KINETIC_PORT` | `kinetic run --serve`, `kinetic serve` | Telemetry listen port when `--port` is omitted (default 8765). Must be 1–65535. |
+| `KINETIC_RATE` | `kinetic run --serve`, `kinetic serve` | Foxglove publish rate in Hz when `--rate` is omitted (default 30). Must be greater than 0. |
+| `KINETIC_SERIAL` | `kinetic run`, `bench`, `serve`; `kinetic-core-bench` | If the variable is present at all, the narrowphase runs single-threaded. Same presence rule as `KINETIC_AUTOPLAY`. |
+| `KINETIC_BENCH_SECONDS` | `kinetic bench`, `kinetic-core-bench` | Simulated seconds per scene when `--seconds` is omitted (CLI default 2, core-bench default 1). |
 | `KINETIC_AUTOPLAY` | Kinetic Studio, on appear | If the variable is present at all, playback starts at launch. Used to profile a running window without driving the transport from the UI. |
 
 A shape-only example:
@@ -22,7 +37,7 @@ kinetic models fetch unitree-go2
 ```
 
 If fetch returns HTTP 403 or 429, the error text already tells you to set
-`GITHUB_TOKEN`.
+`GITHUB_TOKEN`. `kinetic config` reports the token as `set` without echoing it.
 
 ## On-disk cache
 
@@ -63,20 +78,29 @@ listen port does not restart a server that is already bound.
 
 ## CLI flags that change behaviour
 
-| Flag | Commands | Default |
-| --- | --- | --- |
-| `--duration <s>` | `run` | 5 simulated seconds |
-| `--steps <n>` | `run`, `render` | from duration / timestep, or 0 for render |
-| `--realtime` | `run` | off (run as fast as the machine can) |
-| `--record <path>` | `run` | off |
-| `--serve` / `--port <n>` | `run`, `serve` | port 8765 |
-| `--rate <hz>` | `serve` | 30 |
-| `--serial` | `bench`, `kinetic-core-bench` | off (threaded narrowphase) |
-| `--seconds <s>` | `bench`, `kinetic-core-bench` | 2 for `kinetic bench`; 1 for `bench-core.sh` |
-| `--check` | `kinetic-core-bench` | off (print a table only) |
-| `--json` | `kinetic-core-bench` | off (human table) |
-| `--out`, `--width`, `--height`, `--light` | `render` | `kinetic-frame.png`, 1600×1000, dark |
-| `--csv <path>` | `replay` | off |
+`kinetic config` and `kinetic-core-bench --config` print the resolved value
+and which layer supplied it (`--flag`, `KINETIC_*`, or `default`).
+
+| Flag | Commands | Default | Also from |
+| --- | --- | --- | --- |
+| `--duration <s>` | `run` | 5 simulated seconds | `KINETIC_DURATION` |
+| `--steps <n>` | `run`, `render` | from duration / timestep, or 0 for render | |
+| `--realtime` | `run` | off (run as fast as the machine can) | |
+| `--record <path>` | `run` | off | |
+| `--serve` | `run` | off | |
+| `--port <n>` | `run --serve`, `serve` | 8765 | `KINETIC_PORT` |
+| `--rate <hz>` | `run --serve`, `serve` | 30 | `KINETIC_RATE` |
+| `--serial` | `run`, `bench`, `serve`, `kinetic-core-bench` | off (threaded narrowphase) | `KINETIC_SERIAL` |
+| `--seconds <s>` | `bench`, `kinetic-core-bench` | 2 for `kinetic bench`; 1 for `bench-core.sh` | `KINETIC_BENCH_SECONDS` |
+| `--check` | `kinetic-core-bench` | off (print a table only) | |
+| `--json` | `kinetic-core-bench` | off (human table) | |
+| `--config` | `kinetic`, `kinetic-core-bench` | dump resolved knobs and exit | |
+| `--out`, `--width`, `--height`, `--light`, `--no-contacts` | `render` | `kinetic-frame.png`, 1600×1000, dark, contacts on | |
+| `--csv <path>` | `replay` | off | |
+
+`--rate` on `kinetic run --serve` is the same knob as `kinetic serve --rate`.
+`--serial` on `run` and `serve` is the same knob as `kinetic bench --serial`:
+it sets `world.options.multithreaded = false`.
 
 `kinetic models` subcommands: `list`, `info`, `fetch`, `validate`, `cache`,
 `purge`. See [The `kinetic` CLI](./cli.md).

@@ -21,6 +21,7 @@ git clone https://github.com/shubhxho/kinetic
 cd kinetic
 swift build -c release
 ./.build/release/kinetic validate
+./.build/release/kinetic config
 ./.build/release/kinetic run stack --duration 1
 ```
 
@@ -256,19 +257,26 @@ CI builds on `macos-26` for that reason. `swift --version` and
 
 ## Configuration
 
-No config files, no cloud account, no paid services.
+No config files, no cloud account, no paid services. Flags beat environment
+variables, which beat compiled defaults. `kinetic config` (macOS) and
+`./Scripts/bench-core.sh --config` (any host with a C++ compiler) print the
+resolved values and which layer won.
 
 | Name | Where | Default |
 | --- | --- | --- |
 | `GITHUB_TOKEN` | environment | unset (anonymous GitHub API, 60 req/h) |
+| `KINETIC_DURATION` | environment, `run` | 5 s |
+| `KINETIC_PORT` / `--port` | environment, CLI, Studio Settings | `8765` |
+| `KINETIC_RATE` / `--rate` | environment, CLI, Studio Settings | 30 Hz |
+| `KINETIC_SERIAL` / `--serial` | environment, `run` / `bench` / `serve` | unset (threaded narrowphase) |
+| `KINETIC_BENCH_SECONDS` / `--seconds` | environment, `bench`, `kinetic-core-bench` | 2 s CLI / 1 s core-bench |
 | Model cache | `~/Library/Application Support/Kinetic/Models/` | created on first fetch |
-| Telemetry port | CLI `--port`, Studio Settings | `8765` |
-| Publish rate | CLI `--rate`, Studio Settings | 30 Hz |
 | Timeline window | Studio Settings | 20 s |
 | `KINETIC_AUTOPLAY` | environment, Studio only | unset; if present, playback starts on launch (profiling) |
 
 Do not commit tokens. A dummy `GITHUB_TOKEN=ghp_example_not_a_real_token` is
-enough to describe the shape.
+enough to describe the shape. `kinetic config` reports the token as set or
+unset and never prints it.
 
 ## Documentation
 

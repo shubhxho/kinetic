@@ -52,6 +52,7 @@ Do this before Studio. It does not need Metal.
 ```bash
 ./.build/release/kinetic validate
 ./.build/release/kinetic list
+./.build/release/kinetic config
 ./.build/release/kinetic run stack --duration 1
 ```
 
@@ -193,5 +194,6 @@ Do not put a Vercel token in the tree. A dummy
 
 ## Configuration
 
-There is no config file. Telemetry port, model cache, `GITHUB_TOKEN` and
+There is no config file. `kinetic config` dumps the resolved flags, environment
+and defaults. Telemetry port, model cache, `GITHUB_TOKEN` and
 `SimulationOptions` are documented in [Configuration](./configuration.md).

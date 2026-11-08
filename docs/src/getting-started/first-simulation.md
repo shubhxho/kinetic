@@ -6,12 +6,15 @@ After `swift build -c release` (see [Install](./install.md)):
 
 ```bash
 ./.build/release/kinetic list
+./.build/release/kinetic config
 ./.build/release/kinetic run stack --duration 1
 ```
 
-`list` is the seven built-in ids. `run stack --duration 1` steps the ten-box
-tower for one simulated second and prints realtime factor, mean step cost,
-contact count and total energy. No Metal, no Studio, no extra files.
+`list` is the seven built-in ids. `config` prints duration, port, rate, serial
+and whether `GITHUB_TOKEN` is set, naming the flag, env or default that won.
+`run stack --duration 1` steps the ten-box tower for one simulated second and
+prints realtime factor, mean step cost, contact count and total energy. No
+Metal, no Studio, no extra files.
 
 `kinetic run`, `validate`, `bench` and `info` do not need a GPU.
 `kinetic render` and Studio do.

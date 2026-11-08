@@ -126,6 +126,7 @@ under `/Applications`. `swift --version` is the check.
 
 Anonymous GitHub API traffic is 60 requests an hour. Export `GITHUB_TOKEN`
 (a PAT, not a password) in the shell. Do not write it into the repository.
+`kinetic config` reports the token as `set` or `unset` without printing it.
 See [Configuration](../getting-started/configuration.md).
 
 ## Building on Linux
@@ -136,11 +137,14 @@ and SwiftUI. There is no Linux product.
 The physics core does. The first successful run on Linux is:
 
 ```bash
+./Scripts/bench-core.sh --config
 ./Scripts/bench-core.sh --check --seconds 1
+KINETIC_SERIAL=1 KINETIC_BENCH_SECONDS=2 ./Scripts/bench-core.sh --config
 ```
 
-That compiles KineticCore with g++ and asserts scene sizes, contacts, cost
-ordering, stack stability and bit-identical serial vs threaded runs. It is not
+`--config` dumps resolved seconds/serial without running the scenes. The check
+compiles KineticCore with g++ and asserts scene sizes, contacts, cost ordering,
+stack stability and bit-identical serial vs threaded runs. It is not
 `swift test`, and its ms/step column is not the M4 table. See
 [Benchmarks](./benchmarks.md).
 
