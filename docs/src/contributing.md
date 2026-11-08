@@ -5,14 +5,15 @@
 ```text
 Sources/
   KineticCore/       C++20 physics; include/kinetic.h is the public ABI
-  Kinetic/           Swift API, importers, meshes, hulls, recording
+  Kinetic/           Swift API, importers, meshes, hulls, recording, models
   KineticRender/     Metal renderer and the MTKView host
-  KineticBridge/     WebSocket server and the Foxglove protocol
+  KineticBridge/     WebSocket server, client, and the Foxglove protocol
+  KineticML/         MLX policies, insight, scene language
   KineticCLI/        the kinetic command
   KineticStudio/     the SwiftUI app
-Tests/KineticTests/  44 tests across nine suites
+Tests/KineticTests/  45 tests across nine suites
 docs/                this book
-Scripts/             bundle-app.sh
+Scripts/             bundle-app.sh, make-icon.py
 ```
 
 ## Building and checking
@@ -34,6 +35,8 @@ The core has no dependencies and compiles standalone, which makes iteration fast
 ```bash
 cd Sources/KineticCore
 clang++ -std=c++20 -Wall -Wextra -fsyntax-only -Iinclude -Isrc src/*.cpp
+# on Linux, g++ works if clang++ cannot find the C++ standard headers:
+# g++ -std=c++20 -Wall -Wextra -fsyntax-only -Iinclude -Isrc src/*.cpp
 ```
 
 Rules that are not negotiable:
@@ -101,5 +104,17 @@ mdbook serve docs --open
 ```
 
 Chapters live in `docs/src`, the table of contents in `docs/src/SUMMARY.md`.
-Numbers quoted in the docs come from `kinetic bench` and `kinetic validate` —
-update them when the numbers change, and say what changed.
+Numbers quoted in the docs come from `kinetic bench` and `kinetic validate`.
+Update them when the numbers change, and say what changed.
+
+Scene figures in `docs/src/images/*.png` (arm, chain, dominoes, go2, mixed,
+quadruped, stack) are headless `kinetic render` captures. Architecture and
+data-flow drawings are `architecture.svg` / `data-flow.svg` plus matching
+PNGs. Do not invent screenshots of Studio; this tree has none.
+
+After editing the book:
+
+```bash
+mdbook build docs
+python3 docs/check-links.py docs/book
+```

@@ -1,22 +1,20 @@
 # Architecture
 
-Kinetic is five layers. Each one depends only on the layer below it, and each can
-be used without the ones above.
+Kinetic is a stack of libraries plus two apps. Each library depends only on the
+layers below it, and each can be used without the ones above.
+
+<div class="kn-figure">
+  <img src="../images/architecture.png" alt="Layer diagram: KineticStudio and the kinetic CLI sit on KineticRender, KineticBridge and KineticML, which call the Swift Kinetic API, which binds kinetic.h over KineticCore">
+  <p class="kn-caption">Rendered from <code>docs/src/images/architecture.svg</code>. Linking
+  <code>Kinetic</code> alone gives a headless engine with no GUI dependency.</p>
+</div>
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│  KineticStudio          SwiftUI app, timeline, palette      │
-├──────────────────────────┬──────────────────────────────────┤
-│  KineticRender           │  KineticBridge                   │
-│  Metal PBR viewport      │  Foxglove WebSocket server       │
-├──────────────────────────┴──────────────────────────────────┤
-│  Kinetic                 Swift API, URDF/MJCF, meshes,      │
-│                          convex hulls, .kinlog recording    │
-├─────────────────────────────────────────────────────────────┤
-│  kinetic.h               stable C ABI, ~90 entry points     │
-├─────────────────────────────────────────────────────────────┤
-│  KineticCore             C++20 physics, no dependencies     │
-└─────────────────────────────────────────────────────────────┘
+KineticStudio                 kinetic CLI
+KineticRender | KineticBridge | KineticML
+Kinetic          Swift API, URDF/MJCF/USD, meshes, .kinlog, model library
+kinetic.h        stable C ABI, 92 entry points
+KineticCore      C++20 physics, no dependencies
 ```
 
 ## Why a C ABI in the middle
@@ -25,10 +23,11 @@ The physics core is C++ and the rest is Swift. Swift's direct C++ interoperation
 works, but it couples the two languages' build settings, makes the boundary
 implicit, and leaves no obvious place to version the contract.
 
-`kinetic.h` is a flat C header of plain-data structs and opaque handles. It costs
-a thin translation layer and buys three things: the engine is callable from any
-language with a C FFI, the boundary is a file you can read to know exactly what
-is public, and the Swift side can be rewritten without touching physics.
+`kinetic.h` is a flat C header of plain-data structs and opaque handles (92
+functions, counted from the header). It costs a thin translation layer and buys
+three things: the engine is callable from any language with a C FFI, the
+boundary is a file you can read to know exactly what is public, and the Swift
+side can be rewritten without touching physics.
 
 ## KineticCore
 
@@ -187,9 +186,30 @@ costs a few milliseconds once, at startup.
 
 A hand-written RFC 6455 server on Network.framework TCP, plus the Foxglove
 WebSocket protocol on top. Written by hand rather than layered on
-`NWProtocolWebSocket` because subprotocol negotiation — which the Foxglove
-handshake requires — and per-connection backpressure both needed to be under
+`NWProtocolWebSocket` because subprotocol negotiation, which the Foxglove
+handshake requires, and per-connection backpressure both needed to be under
 direct control.
+
+There is a matching client (`FoxgloveClient`) used by Studio's Foxglove mode
+to attach to another Kinetic process.
+
+## KineticML
+
+Optional. Trains and evaluates policies, runs streaming anomaly detectors, and
+parses scene-language commands. It talks to `World` through the Swift API and
+to the GPU through MLX. When MLX cannot initialise a device, the statistical
+detectors, the LQR baseline and the deterministic grammar still run.
+
+Studio places **ML Insights** in the panel catalog. `PolicyPanel` and
+`AskKinetic` exist as SwiftUI views in `Sources/KineticStudio` but are not
+registered in `PanelKind`, so they are not reachable from the layout menu.
+
+<div class="kn-figure">
+  <img src="../images/data-flow.png" alt="Data flow: controllers write control into World, step() runs the ten-stage pipeline, state is read by the renderer, recordings, Foxglove and ML insight">
+  <p class="kn-caption">Who writes <code>ctrl</code>, what <code>step()</code> does, and who
+  reads the result. USD is a Swift-API import path; the CLI and Studio Open
+  dialog load URDF and MJCF.</p>
+</div>
 
 ## Where state lives
 

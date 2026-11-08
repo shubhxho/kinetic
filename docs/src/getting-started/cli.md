@@ -11,11 +11,40 @@ kinetic <command> [arguments]
   render   <scene|file>      render a frame to PNG, headless
   replay   <file.kinlog>     inspect or export a recording
   serve    <scene|file>      stream live telemetry over WebSocket
+  models   [subcommand]      browse, fetch and validate published robots
 ```
 
 Anywhere a scene is accepted you may give a built-in name (`kinetic list`), or a
 path to a `.urdf` or MJCF `.xml`. Files without a recognised extension are
-sniffed for a `<robot>` or `<mujoco>` root element.
+sniffed for a `<robot>` or `<mujoco>` root element. USD is not a CLI input;
+use the Swift `USDImporter` API.
+
+Built-in ids: `stack`, `arm`, `quadruped`, `cartpole`, `chain`, `dominoes`,
+`mixed`. Headless captures of six of them:
+
+<div class="kn-compare">
+  <div class="kn-figure">
+    <img src="../images/arm.png" alt="Six-DOF serial arm in the Kinetic viewport">
+    <p class="kn-caption"><code>arm</code></p>
+  </div>
+  <div class="kn-figure">
+    <img src="../images/chain.png" alt="Twenty-link pendulum chain hanging in the Kinetic viewport">
+    <p class="kn-caption"><code>chain</code></p>
+  </div>
+</div>
+<div class="kn-compare">
+  <div class="kn-figure">
+    <img src="../images/dominoes.png" alt="A line of dominoes in the Kinetic viewport">
+    <p class="kn-caption"><code>dominoes</code></p>
+  </div>
+  <div class="kn-figure">
+    <img src="../images/mixed.png" alt="Mixed spheres, capsules, cylinders and hulls in a pile">
+    <p class="kn-caption"><code>mixed</code></p>
+  </div>
+</div>
+
+`cartpole` has no committed figure. `quadruped` and `stack` are on the
+[landing page](../introduction.md).
 
 ## `info`
 
@@ -101,6 +130,9 @@ kinetic render stack --steps 400 --out stack.png --width 2400 --height 1500
 kinetic render arm --light --out arm-light.png
 ```
 
+`--no-contacts` hides the contact overlay. Default size is 1600×1000, which is
+the size of the committed figures in `docs/src/images/`.
+
 Fully headless — it opens no window and needs no display session, so it works
 over SSH and in CI. Useful for regression images of a model's rest pose.
 
@@ -134,3 +166,28 @@ kinetic serve arm --port 8765 --rate 60
 
 Steps the scene in realtime on a background queue and publishes it. Any Foxglove
 client can connect; so can Studio. See [Connecting Foxglove](../telemetry/foxglove.md).
+
+## `models`
+
+```bash
+kinetic models list
+kinetic models info unitree-go2
+kinetic models fetch unitree-go2
+kinetic models validate unitree-go2
+kinetic models cache
+kinetic models purge unitree-go2
+```
+
+| Subcommand | What it does |
+| --- | --- |
+| `list [query]` | registry rows: id, vendor, format, dof, actuators, licence, cached |
+| `info <id>` | description, licence URLs, notes |
+| `fetch <id>` | sparse download from the upstream GitHub repo into the local cache |
+| `validate <id>` | import the cached description and print a `ModelValidation` report |
+| `cache` | path, count, size |
+| `purge [id]` | delete one id, or the whole cache |
+
+Fourteen registry entries, none vendored. Fetch honours `GITHUB_TOKEN` when
+set. The cache is `~/Library/Application Support/Kinetic/Models/`. Full
+caveats (no `<equality>` / `<tendon>`, COLLADA rejected, and so on) are in
+[The model library](../models.md).

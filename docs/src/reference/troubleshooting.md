@@ -106,6 +106,29 @@ They should not. If they do:
 - File a bug with the scene — this is a real defect, and `kinetic validate`
   checks it on every run.
 
+## `swift build` dies on mlx-swift / swift-tools-version
+
+The Kinetic package itself is `swift-tools-version: 6.0`. The pinned
+`mlx-swift` 0.31.x package is `6.3`. A Swift 6.1 toolchain (typical of an
+older Xcode 16 / macOS 15 image) refuses to parse that manifest.
+
+Use a Swift 6.3 toolchain. CI uses `macos-26` and selects the newest Xcode
+under `/Applications`. `swift --version` is the check.
+
+## `kinetic models fetch` returns 403 or 429
+
+Anonymous GitHub API traffic is 60 requests an hour. Export `GITHUB_TOKEN`
+(a PAT, not a password) in the shell. Do not write it into the repository.
+See [Configuration](../getting-started/configuration.md).
+
+## Building on Linux
+
+The physics core is portable C++20 with no dependencies, but this package does
+not build on Linux: the CLI imports `AppKit`, the renderer is Metal, and Studio
+is SwiftUI. There is no documented Linux product. Use a Mac, or bind
+`kinetic.h` from another language after compiling `KineticCore` yourself
+(that standalone path is not a supported product).
+
 ## Studio will not launch
 
 ```bash

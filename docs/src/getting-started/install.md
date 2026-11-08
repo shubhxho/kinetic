@@ -1,13 +1,27 @@
 # Install
 
-Kinetic needs macOS 14 or later, Xcode 15 or later (for the Swift 6 toolchain and
-the Metal compiler), and an Apple-silicon or Intel Mac with a Metal 3 GPU.
+Kinetic runs on macOS 14 or later with a Metal 3 GPU. That is what
+`Package.swift` declares (`platforms: [.macOS(.v14)]`, `swift-tools-version: 6.0`).
+
+A current `swift build` needs more than that, because the pinned MLX dependency
+does:
+
+| | Declared | Needed today |
+| --- | --- | --- |
+| OS | macOS 14+ | macOS 14+ to run |
+| SwiftPM | 6.0 | **Swift 6.3** |
+| Xcode | (unspecified) | **Xcode 26** on the project's CI |
+
+[mlx-swift 0.31.x](https://github.com/ml-explore/mlx-swift) (this tree pins
+`0.31.6`) declares `swift-tools-version: 6.3`. Swift 6.1 on a macOS 15 image
+refuses to read that manifest, which is why CI (`.github/workflows/ci.yml`)
+runs on `macos-26`.
 
 Check what you have:
 
 ```bash
-swift --version      # Apple Swift 6.0 or newer
-xcodebuild -version  # Xcode 15.0 or newer
+swift --version      # Apple Swift 6.3 or newer, for a current mlx-swift pin
+xcodebuild -version  # Xcode 26 on CI; older Xcode will fail at package resolution
 ```
 
 ## Build from source
@@ -87,12 +101,14 @@ targets: [
         .product(name: "Kinetic", package: "kinetic"),          // physics
         .product(name: "KineticRender", package: "kinetic"),    // Metal viewport
         .product(name: "KineticBridge", package: "kinetic"),    // telemetry server
+        .product(name: "KineticML", package: "kinetic"),        // optional, pulls mlx-swift
     ])
 ]
 ```
 
-The three products are separable. `Kinetic` alone has no GUI dependency and is
-safe to link into a headless tool or a test target.
+The products are separable. `Kinetic` alone has no GUI dependency and is safe
+to link into a headless tool or a test target. `KineticML` is the one that
+pulls MLX and therefore the Swift 6.3 toolchain requirement.
 
 ## Run the tests
 
@@ -100,7 +116,7 @@ safe to link into a headless tool or a test target.
 swift test
 ```
 
-44 tests across nine suites: dynamics, kinematics, constraints, the convex hull,
+45 tests across nine suites: dynamics, kinematics, constraints, the convex hull,
 mesh import, URDF, MJCF, the recording format and the WebSocket transport.
 
 ## Build the documentation
@@ -111,3 +127,11 @@ This book is [mdBook](https://rust-lang.github.io/mdBook/):
 brew install mdbook
 mdbook serve docs --open
 ```
+
+CI installs the v0.5.4 Linux binary from the mdBook releases page and then
+runs `mdbook build docs` plus `python3 docs/check-links.py docs/book`.
+
+## Configuration
+
+There is no config file. Telemetry port, model cache, `GITHUB_TOKEN` and
+`SimulationOptions` are documented in [Configuration](./configuration.md).

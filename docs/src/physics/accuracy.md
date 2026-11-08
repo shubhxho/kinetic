@@ -107,7 +107,8 @@ recording.
 
 ## The unit test suite
 
-`swift test` runs 44 tests across nine suites. Beyond the checks above:
+`swift test` runs 45 tests across nine suites (`@Test` count in
+`Tests/KineticTests`). Beyond the checks above:
 
 | Suite | Notable assertions |
 | --- | --- |

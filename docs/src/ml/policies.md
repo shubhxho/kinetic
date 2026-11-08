@@ -1,8 +1,11 @@
 # Learned control
 
-The **Policy** panel in Studio trains a neural controller against a Kinetic scene
-and measures it against an analytic baseline. The task that ships is cart-pole
-balancing.
+`KineticML` trains a neural controller against a Kinetic scene and measures it
+against an analytic baseline. The task that ships is cart-pole balancing.
+
+A `PolicyPanel` SwiftUI view exists under `Sources/KineticStudio/Panels/` but
+is **not** in `PanelKind`, so it does not appear in the layout menu. The API
+below is the supported surface.
 
 ## Running one
 

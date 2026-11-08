@@ -7,16 +7,18 @@
 </div>
 
 Kinetic is a robotics simulator built for macOS. It is one repository containing
-four things that usually come from four different projects:
+the pieces that usually come from four different projects, plus on-device ML:
 
-- a **rigid-body physics engine** in C++20 — reduced-coordinate articulated
+- a **rigid-body physics engine** in C++20: reduced-coordinate articulated
   dynamics, convex collision detection, and a soft-constraint solver;
-- a **Metal renderer** — instanced physically-based shading, shadow mapping and
+- a **Metal renderer**: instanced physically-based shading, shadow mapping and
   debug overlays, running on Apple GPUs with no translation layer;
-- **Kinetic Studio** — a native SwiftUI application for driving, inspecting and
+- **Kinetic Studio**: a native SwiftUI application for driving, inspecting and
   scrubbing a running simulation;
 - a **telemetry server** that speaks the Foxglove WebSocket protocol, so any
-  Foxglove client can visualise a Kinetic scene without a bridge process.
+  Foxglove client can visualise a Kinetic scene without a bridge process;
+- **KineticML**: policies, streaming insight and a scene-language grammar, on
+  the same GPU, with honest fallbacks when MLX is missing.
 
 Everything is native. There is no Python runtime, no ROS installation, no
 container, no CUDA. `swift build` produces the whole system in under a minute
@@ -35,7 +37,7 @@ swift build -c release
   <a class="kn-card" href="getting-started/install.html">
     <h3>Install and run</h3>
     <p>Build from source, verify the engine, bundle the app, put the CLI on your
-    PATH.</p>
+    PATH. Configuration has no secrets file.</p>
   </a>
   <a class="kn-card" href="getting-started/first-simulation.html">
     <h3>Your first simulation</h3>
@@ -109,75 +111,35 @@ print(world.contacts().count)        // 40 contact points holding the tower up
 print(world.centerOfMass)            // SIMD3<Double>(0.0, 0.0, 1.0)
 ```
 
-<div class="kn-figure">
-  <img src="images/stack.png" alt="Ten boxes stacked, with a directional shadow on the ground grid">
-  <p class="kn-caption">The scene above after 400 steps. Every box is within 7 mm
-  of its ideal height — the load propagates through nine box-on-box manifolds
-  and forty contact points.</p>
+<div class="kn-compare">
+  <div class="kn-figure">
+    <img src="images/stack.png" alt="Ten boxes stacked in the dark theme, with a directional shadow on the ground grid">
+    <p class="kn-caption">Dark theme. Forty contact points, max height drift 7 mm.</p>
+  </div>
+  <div class="kn-figure">
+    <img src="images/stack-light.png" alt="The same ten-box stack rendered with the light theme">
+    <p class="kn-caption"><code>kinetic render stack --light</code>. Same Metal renderer.</p>
+  </div>
 </div>
 
 The same model can be loaded from URDF or MJCF, streamed to Foxglove, recorded
-to a seekable `.kinlog`, rendered headless to a PNG, or opened in Studio.
+to a seekable `.kinlog`, rendered headless to a PNG, or opened in Studio. USD
+is a Swift API, not a CLI input.
 
 ## The system, in one diagram
 
 <div class="kn-figure">
-<svg viewBox="0 0 720 300" role="img" aria-label="Kinetic layer diagram" class="kn-svg">
-  <style>
-    .kn-svg .box { fill: none; stroke: currentColor; stroke-width: 1.2; opacity: 0.55; }
-    .kn-svg .fill { fill: currentColor; opacity: 0.05; }
-    .kn-svg .label { fill: currentColor; font: 600 13px ui-sans-serif, system-ui, sans-serif; }
-    .kn-svg .sub { fill: currentColor; font: 400 11px ui-monospace, SFMono-Regular, monospace; opacity: 0.6; }
-    .kn-svg .accent { stroke: #0070f3; stroke-width: 1.6; opacity: 1; }
-    .kn-svg .accentText { fill: #0070f3; font: 600 13px ui-sans-serif, system-ui, sans-serif; }
-    .kn-svg .arrow { stroke: currentColor; stroke-width: 1; opacity: 0.35; }
-  </style>
-
-  <rect class="fill" x="20" y="16" width="680" height="44" rx="8"/>
-  <rect class="box" x="20" y="16" width="680" height="44" rx="8"/>
-  <text class="label" x="40" y="36">KineticStudio</text>
-  <text class="sub" x="40" y="52">SwiftUI app · viewport · timeline over full state · plots · command palette</text>
-
-  <rect class="fill" x="20" y="72" width="332" height="44" rx="8"/>
-  <rect class="box" x="20" y="72" width="332" height="44" rx="8"/>
-  <text class="label" x="40" y="92">KineticRender</text>
-  <text class="sub" x="40" y="108">Metal PBR · shadows · overlays</text>
-
-  <rect class="fill" x="368" y="72" width="332" height="44" rx="8"/>
-  <rect class="box" x="368" y="72" width="332" height="44" rx="8"/>
-  <text class="label" x="388" y="92">KineticBridge</text>
-  <text class="sub" x="388" y="108">RFC 6455 · foxglove.websocket.v1</text>
-
-  <rect class="fill" x="20" y="128" width="680" height="44" rx="8"/>
-  <rect class="box" x="20" y="128" width="680" height="44" rx="8"/>
-  <text class="label" x="40" y="148">Kinetic</text>
-  <text class="sub" x="40" y="164">Swift API · URDF · MJCF · meshes · Quickhull · .kinlog recording</text>
-
-  <rect x="20" y="184" width="680" height="40" rx="8" fill="#0070f3" opacity="0.07"/>
-  <rect class="box accent" x="20" y="184" width="680" height="40" rx="8"/>
-  <text class="accentText" x="40" y="203">kinetic.h</text>
-  <text class="sub" x="40" y="218">stable C ABI · ~90 entry points · plain data, opaque handles</text>
-
-  <rect class="fill" x="20" y="236" width="680" height="44" rx="8"/>
-  <rect class="box" x="20" y="236" width="680" height="44" rx="8"/>
-  <text class="label" x="40" y="256">KineticCore</text>
-  <text class="sub" x="40" y="272">C++20 physics · CRBA · RNEA · GJK/EPA · PGS solver · no dependencies</text>
-
-  <line class="arrow" x1="360" y1="60" x2="360" y2="72"/>
-  <line class="arrow" x1="360" y1="116" x2="360" y2="128"/>
-  <line class="arrow" x1="360" y1="172" x2="360" y2="184"/>
-  <line class="arrow" x1="360" y1="224" x2="360" y2="236"/>
-</svg>
-  <p class="kn-caption">Each layer depends only on the one below it, and each can
+  <img src="images/architecture.png" alt="Layer diagram: KineticStudio and the kinetic CLI sit on KineticRender, KineticBridge and KineticML, which call the Swift Kinetic API, which binds kinetic.h over KineticCore">
+  <p class="kn-caption">Each layer depends only on the ones below it, and each can
   be used without the ones above. Linking <code>Kinetic</code> alone gives a headless
-  engine with no GUI dependency.</p>
+  engine with no GUI dependency. SVG source: <code>images/architecture.svg</code>.</p>
 </div>
 
 ## How the book is organised
 
 | Part | What it covers |
 | --- | --- |
-| [Getting started](./getting-started/install.md) | Building, the first simulation, Studio and the CLI |
+| [Getting started](./getting-started/install.md) | Building, first simulation, Studio, CLI, configuration |
 | [Concepts](./concepts/architecture.md) | How the pieces fit, and the conventions everything obeys |
 | [Physics](./physics/dynamics.md) | The actual algorithms, with the equations they implement |
 | [Cookbook](./cookbook.md) | Complete, runnable recipes for common tasks |
@@ -192,7 +154,15 @@ choice that everything else follows from.
 
 ## Status
 
-Version 1.0. The physics core is validated against closed-form solutions and
-conservation laws on every commit; see
+The C ABI reports `1.0.0` (`KN_VERSION_*` in `kinetic.h`). Git tags include
+`v1.0.0` and `v1.1.0`; this tree is `main` ahead of those tags. The physics
+core is validated against closed-form solutions and conservation laws on every
+CI run of `kinetic validate`; see
 [Accuracy and validation](./physics/accuracy.md) for the current numbers and
 exactly what each check proves.
+
+The layer and data-flow drawings used in the README and this book are committed
+as `docs/src/images/architecture.svg` / `.png` and
+`docs/src/images/data-flow.svg` / `.png`. Scene figures such as
+`images/quadruped.png` are headless `kinetic render` captures from macOS, not
+screenshots of a live Studio window.

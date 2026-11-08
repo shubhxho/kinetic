@@ -3,7 +3,7 @@
 # Kinetic
 
 **Native macOS robotics simulation.**
-Rigid-body physics, a Metal renderer, and Foxglove-compatible telemetry — in one repository, with no runtime to install.
+Rigid-body physics, a Metal renderer, and Foxglove-compatible telemetry in one repository, with no runtime to install.
 
 [Documentation](https://shubhxho.github.io/kinetic) ·
 [Getting started](https://shubhxho.github.io/kinetic/getting-started/install.html) ·
@@ -12,7 +12,9 @@ Rigid-body physics, a Metal renderer, and Foxglove-compatible telemetry — in o
 
 </div>
 
----
+<p align="center">
+  <img src="docs/src/images/quadruped.png" alt="A twelve-actuator quadruped in the Kinetic viewport, crouched on a ground grid with red and green world axes">
+</p>
 
 ```bash
 git clone https://github.com/shubhxho/kinetic
@@ -21,27 +23,36 @@ swift build -c release
 ./.build/release/kinetic validate
 ```
 
-No Python. No ROS. No container. No CUDA. One build command, under a minute.
+No Python. No ROS. No container. No CUDA. One build command, on a Mac.
 
 ## What is in here
 
+<p align="center">
+  <img src="docs/src/images/architecture.png" alt="Layer diagram: KineticStudio and the kinetic CLI sit on KineticRender, KineticBridge and KineticML, which call the Swift Kinetic API, which binds kinetic.h over the C++ KineticCore physics engine">
+</p>
+
 | Layer | What it is |
 | --- | --- |
-| **KineticCore** | C++20 rigid-body physics — reduced-coordinate articulated dynamics, convex collision, soft-constraint solver. No dependencies. |
-| **kinetic.h** | A stable C ABI, ~90 entry points. Bindable from anything with a C FFI. |
-| **Kinetic** | Swift API, URDF and MJCF importers, mesh loading, Quickhull, `.kinlog` recording. |
-| **KineticRender** | Metal forward PBR renderer — instanced geometry, shadow mapping, contact and frame overlays, headless snapshots. |
+| **KineticCore** | C++20 rigid-body physics: reduced-coordinate articulated dynamics, convex collision, soft-constraint solver. No dependencies. |
+| **kinetic.h** | A stable C ABI, 92 entry points. Bindable from anything with a C FFI. |
+| **Kinetic** | Swift API, URDF and MJCF importers, USD geometry, mesh loading, Quickhull, `.kinlog` recording, model library. |
+| **KineticRender** | Metal forward PBR renderer: instanced geometry, shadow mapping, contact overlays, headless PNG snapshots. |
 | **KineticBridge** | A hand-written RFC 6455 server speaking the Foxglove WebSocket protocol. |
-| **KineticML** | On-device machine learning through MLX — learned control, streaming anomaly detection, natural-language scene commands. |
-| **KineticStudio** | SwiftUI app with Liquid Glass: dockable panel workspace, timeline scrubbing over full simulation state, live plots, joint posing, command palette. |
+| **KineticML** | On-device machine learning through MLX: learned control, streaming anomaly detection, natural-language scene commands. |
+| **KineticStudio** | SwiftUI app: `NavigationSplitView` shell, dockable panel workspace, timeline scrubbing over full simulation state, live plots, joint posing, command palette. |
+| **kinetic CLI** | `list`, `info`, `run`, `bench`, `validate`, `render`, `replay`, `serve`, `models`. |
+
+<p align="center">
+  <img src="docs/src/images/data-flow.png" alt="Data-flow diagram: controllers, Foxglove clients and Studio joints write into World; step() runs kinematics, collision and the solver; state is read by the renderer, kinlog recordings, the Foxglove server and ML insight">
+</p>
 
 ## Physics
 
 - **Reduced coordinates.** Joints are exact by construction and cannot drift, no matter the timestep or gear ratio. CRBA for the joint-space inertia, RNEA for bias forces, LDLᵀ with implicit damping folded in.
-- **Speculative contacts.** A separated point may approach by at most its remaining gap this step. Resting bodies sit at exactly their radius — **zero** steady-state penetration — and a 120 m/s projectile stops dead at a 10 mm wall.
+- **Speculative contacts.** A separated point may approach by at most its remaining gap this step. Resting bodies sit at exactly their radius, with zero steady-state penetration, and a 120 m/s projectile stops dead at a 10 mm wall.
 - **True friction cone.** Second-order cone projection, not a pyramid, so grip is isotropic and sliding objects do not curve.
 - **Physically parameterised contact.** A time constant and a damping ratio, derived against each constraint's own effective inertia, so a 1 g screw and a 1 t chassis settle identically from the same setting.
-- **Bit-identical determinism**, including with the threaded narrowphase enabled. Asserted on every run.
+- **Bit-identical determinism**, including with the threaded narrowphase enabled. Asserted on every run of `kinetic validate`.
 
 ## Validated, not asserted
 
@@ -61,12 +72,18 @@ $ kinetic validate
   all checks passed
 ```
 
-Every check is a closed-form or conservation-law comparison. Plus 44 unit tests
+Every check is a closed-form or conservation-law comparison. Plus 45 unit tests
 across nine suites. [What each one proves.](https://shubhxho.github.io/kinetic/physics/accuracy.html)
+
+The transcript above is the engine's documented output, recorded from a macOS
+release build. This checkout was reviewed on Linux, where the Swift/Metal
+toolchain is not present, so that command was not re-run here.
 
 ## Performance
 
-Apple M4, single-threaded except where noted, double precision:
+Apple M4, single-threaded except where noted, double precision. Numbers come
+from `kinetic bench` on that machine; they are not re-measured in this
+checkout.
 
 | Scene | nv | ms/step | realtime |
 | --- | --- | --- | --- |
@@ -97,13 +114,24 @@ world.step(3000)
 print(world.contacts().count)   // 40 contact points holding the tower up
 ```
 
+<p align="center">
+  <img src="docs/src/images/stack.png" alt="Ten boxes stacked in the Kinetic viewport with a directional shadow on the ground grid">
+</p>
+
 ```bash
 kinetic info panda.urdf                       # inspect a model
 kinetic run quadruped --duration 10 --record walk.kinlog
 kinetic bench                                 # benchmark every scene
 kinetic render stack --steps 400 --out stack.png
 kinetic serve arm --port 8765                 # stream to Foxglove
+kinetic models list
+kinetic models fetch unitree-go2
+kinetic models validate unitree-go2
 ```
+
+The PNG figures in `docs/src/images/` are headless captures from
+`kinetic render` on macOS (1600×1000). They are the same Metal renderer Studio
+uses. This environment cannot re-render them.
 
 ## Kinetic Studio
 
@@ -112,36 +140,47 @@ kinetic serve arm --port 8765                 # stream to Foxglove
 open "dist/Kinetic Studio.app"
 ```
 
-- **Dockable panel workspace** — a binary-split layout tree with drag splitters
-  and four presets, including a Foxglove-shaped one. Twelve panel kinds: 3D
-  viewport, plots, raw messages, table, state transitions, diagnostics, log,
-  joints, actuators, scene tree, inspector, ML insights.
+`swift build` emits a bare executable. The script wraps it as
+`dist/Kinetic Studio.app` (Info.plist, icon, embedded `kinetic` CLI, ad-hoc
+signature). Running `.build/release/KineticStudio` directly gives no Dock icon
+or menu bar.
+
+- **Dockable panel workspace** inside a `NavigationSplitView` shell, with a
+  scene-tree sidebar, an inspector, and a binary-split layout tree in the
+  detail column. Four presets (Simulate, Analyse, Debug, Foxglove). Twelve
+  panel kinds: 3D viewport, plots, raw messages, table, state transitions,
+  diagnostics, log, joints, actuators, scene tree, inspector, ML insights.
 - **Liquid Glass** chrome on macOS 26 (`GlassEffectContainer`, `.glassEffect`,
   `.buttonStyle(.glass)`), with a deliberate `.ultraThinMaterial` fallback below.
 - **Timeline scrubbing over full simulation state.** Twenty seconds of every
-  `qpos`, `qvel` and contact set, restored directly. Not a replay of messages —
+  `qpos`, `qvel` and contact set, restored directly. Not a replay of messages:
   the actual state, resumable.
 - **Command palette** (`⌘K`) for every action.
-- **Joint posing** — drag a slider, watch the link move, verify an imported
+- **Joint posing:** drag a slider, watch the link move, verify an imported
   URDF's axes.
 - **Solver parameters editable while running.**
+- **Settings** (`⌘,`): timeline history length, viewport frame rate, telemetry
+  port and publish rate.
+
+Studio Open (`⌘O`) accepts URDF and MJCF. USD is a Swift API, not that dialog.
 
 ## On-device ML
 
 Through [MLX](https://github.com/ml-explore/mlx-swift), on the same GPU the
 viewport uses. No Python, no separate process.
 
-- **Learned control** — a cart-pole policy trained in-repo by cross-entropy
+- **Learned control:** a cart-pole policy trained in-repo by cross-entropy
   method, measured against an analytic LQR baseline derived from the scene's
   real inertias.
-- **Telemetry insight** — seven streaming statistical detectors plus an optional
-  learned joint-pattern mode, at ~1 µs per step for nine channels. Explanations
-  name this engine's actual tuning knobs, and a six-second run of pure noise
-  produces zero false positives.
-- **Scene language** — "drop five 10 cm boxes from 2 metres onto ice" parses
+- **Telemetry insight:** seven streaming statistical detectors plus an optional
+  learned joint-pattern mode, at ~1 µs per step for nine channels.
+- **Scene language:** "drop five 10 cm boxes from 2 metres onto ice" parses
   deterministically, shows you the plan, and changes nothing until you approve.
 
-Each degrades honestly when MLX is unavailable rather than failing.
+Each degrades honestly when MLX is unavailable rather than failing. A
+`swift build` CLI product has no MLX metallib (SwiftPM has no Metal compile
+step); open the package in Xcode once, or let `Scripts/bundle-app.sh` stage a
+metallib from DerivedData when one exists.
 
 ## Robot models
 
@@ -151,14 +190,18 @@ kinetic models fetch unitree-go2
 kinetic models validate unitree-go2
 ```
 
-Fourteen published robots — Franka, UR, Unitree Go2/G1/H1, ANYmal, Shadow Hand,
+Fourteen published robots: Franka, UR, Unitree Go2/G1/H1, ANYmal, Shadow Hand,
 Robotiq, and three NVIDIA IsaacGymEnvs URDFs. Every upstream URL was verified
 before it was recorded, licences are surfaced, and nothing is re-hosted.
+
+Fetch is sparse (subtree blobs, not a whole clone) and honours `GITHUB_TOKEN`
+when set. The cache is `~/Library/Application Support/Kinetic/Models/`. Do not
+put a real token in a file in this repo.
 
 USD import via ModelIO brings in Omniverse and Isaac assets, with the Y-up to
 Z-up conversion applied to transforms and vertices and a best-effort UsdPhysics
 parser for ASCII layers. The boundary between what is read and what is inferred
-is explicit — nothing invents a mass silently.
+is explicit: nothing invents a mass silently. USD is not a `kinetic run` input.
 
 ## Talks to Foxglove, both directions
 
@@ -175,9 +218,12 @@ actuators.
 
 | Reads | Writes |
 | --- | --- |
-| URDF, MJCF, USD/USDA/USDC/USDZ | `.kinlog` (seekable, self-describing) |
+| URDF, MJCF, USD/USDA/USDC/USDZ (API) | `.kinlog` (seekable, self-describing) |
 | STL (binary + ASCII), OBJ, ASCII PLY | CSV channel export |
 | | PNG (headless render) |
+
+CLI and Studio Open load URDF and MJCF. USD, STL, OBJ and PLY go through the
+Swift importers.
 
 ## What it is not
 
@@ -185,27 +231,49 @@ actuators.
   of parallel environments, use Isaac.
 - **Not photorealistic.** The viewport makes physics legible, not marketing
   footage.
-- **Not cross-platform.** The physics core is portable C++; the renderer is Metal.
+- **Not cross-platform.** The physics core is portable C++; the renderer is Metal,
+  the CLI links AppKit, and Studio is SwiftUI.
 - **No soft bodies, cloth, fluids, tendons or camera sensors.**
 
 [The full comparison, including where MuJoCo, Bullet, Gazebo and Foxglove win.](https://shubhxho.github.io/kinetic/reference/comparison.html)
 
 ## Requirements
 
-macOS 14+, Xcode 15+, a Metal 3 GPU.
+| | What the package declares | What a current `swift build` needs |
+| --- | --- | --- |
+| OS | macOS 14+ | macOS 14+ to run |
+| Toolchain | `swift-tools-version: 6.0` | Swift 6.3 / Xcode 26, because [mlx-swift 0.31.x](https://github.com/ml-explore/mlx-swift) declares `swift-tools-version: 6.3` |
+| GPU | Metal 3 | Metal 3 for the viewport and `kinetic render` |
+
+CI builds on `macos-26` for that reason. `swift --version` and
+`xcodebuild -version` are the checks to run before building.
+
+## Configuration
+
+No config files, no cloud account, no paid services.
+
+| Name | Where | Default |
+| --- | --- | --- |
+| `GITHUB_TOKEN` | environment | unset (anonymous GitHub API, 60 req/h) |
+| Model cache | `~/Library/Application Support/Kinetic/Models/` | created on first fetch |
+| Telemetry port | CLI `--port`, Studio Settings | `8765` |
+| Publish rate | CLI `--rate`, Studio Settings | 30 Hz |
+| Timeline window | Studio Settings | 20 s |
+| `KINETIC_AUTOPLAY` | environment, Studio only | unset; if present, playback starts on launch (profiling) |
+
+Do not commit tokens. A dummy `GITHUB_TOKEN=ghp_example_not_a_real_token` is
+enough to describe the shape.
 
 ## Documentation
 
 ```bash
-brew install mdbook
+brew install mdbook   # or the v0.5.4 binary used by CI
 mdbook serve docs --open
 ```
 
-32 chapters: getting started, the Studio workspace, the conventions everything
-obeys, the actual algorithms with their equations, a cookbook of runnable
-recipes, the ML features, the model library, every file format, the wire
-protocol, both API surfaces, benchmarks, comparisons, troubleshooting and a
-glossary.
+The book covers install, Studio, conventions, the algorithms with equations, a
+cookbook, ML, the model library, file formats, the wire protocol, both API
+surfaces, benchmarks, comparisons, troubleshooting and a glossary.
 
 ## License
 

@@ -8,12 +8,16 @@ become two.
 
 | Action | How |
 | --- | --- |
-| split right | `⌘\` or the panel header menu |
-| split down | `⌘⇧\` |
-| close | `⌘W` (never closes the last one) |
+| split right / down | toolbar layout menu, or the panel header menu |
+| close | toolbar layout menu (never closes the last panel) |
 | change type | the panel header's type menu |
-| move focus | `⌥⌘]` / `⌥⌘[` |
+| apply a preset | toolbar layout menu: Simulate, Analyse, Debug, Foxglove |
 | resize | drag any divider |
+
+`PanelCommandAction` in `PanelHost.swift` also names `⌘\`, `⌘⇧\`, `⌘W`,
+`⌥⌘]` and `⌥⌘[`, but `PanelCommands` is not attached to
+`KineticStudioApp`'s `.commands` scene, so those keys are not wired in the
+running app. Use the layout menu.
 
 Each panel header is 22 pt, secondary-coloured, and strengthens on hover — it is
 chrome, not content.

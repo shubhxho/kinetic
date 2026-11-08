@@ -187,6 +187,14 @@ URDF.load(data: Data, into: World? = nil, options: URDFImportOptions)
 
 MJCF.load(contentsOf: URL, into: World? = nil, options: MJCFImportOptions)
     throws -> (world: World, robot: Robot)
+
+USDImporter.inspect(contentsOf: URL) throws -> USDDocument
+USDImporter.loadGeometry(contentsOf: URL, options:) throws -> [USDNode]
+USDImporter.addToWorld(URL, world: World, options:) throws -> Robot
+
+ModelLibrary().fetch(id) async throws -> URL          // network
+ModelLibrary().load(id) throws -> (world: World, robot: Robot)  // cache only
+ModelRegistry.all / .entry(id:) / .search(_:)
 ```
 
 ## Meshes and hulls
@@ -239,4 +247,9 @@ import KineticBridge
 let bridge = FoxgloveBridge(world: world)
 try bridge.start(port: 8765)
 bridge.publishIfNeeded()
+
+import KineticML
+MLRuntime.isAvailable
+MLRuntime.isUsable
+IntentParser.parse("drop five 10 cm boxes from 2 metres onto ice")
 ```
